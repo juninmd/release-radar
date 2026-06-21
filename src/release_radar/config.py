@@ -9,10 +9,10 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     youtube_sources: str = (
-        "movies|@MovieclipsTrailers,"
+        "movies|@RottenTomatoesTRAILERS,"
         "series|@NetflixBrasil,"
         "games|@PlayStation,"
-        "games|@Xbox,"
+        "games|@XboxViewTV,"
         "games|@NintendoAmerica,"
         "anime|@Crunchyroll"
     )
