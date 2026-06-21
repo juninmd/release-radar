@@ -4,6 +4,7 @@ import logging
 
 from telegram import Bot
 
+from .hype import hype_badge, hype_score
 from .models import ReleaseAnalysis, ReleaseCandidate
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def format_caption(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
         [
             f"🚨 <b>{escape(analysis.title)}</b>",
             f"🎭 {escape(analysis.category)} | {escape(candidate.channel)}",
+            escape(hype_badge(hype_score(analysis))),
             f"🗓 {escape(analysis.release_window)}",
             f'▶️ <a href="{escape(candidate.url)}">Trailer/anuncio</a>',
         ]
@@ -79,6 +81,7 @@ def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
         f"📺 Fonte: {escape(candidate.channel)}",
         f"🗓 Lancamento: {escape(analysis.release_window)}",
         f"🎯 Confianca: {analysis.confidence:.0%}",
+        escape(hype_badge(hype_score(analysis))),
     ]
     if analysis.platforms:
         lines.append(f"🕹 Plataformas/onde ver: {escape(', '.join(analysis.platforms))}")
