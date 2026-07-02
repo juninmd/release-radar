@@ -16,6 +16,7 @@ def get_channel_candidates(
     channel: str,
     limit: int,
     max_duration: int,
+    extra_opts: dict[str, Any] | None = None,
 ) -> list[ReleaseCandidate]:
     url = f"https://www.youtube.com/{channel}/videos"
     opts: dict[str, Any] = {
@@ -24,6 +25,7 @@ def get_channel_candidates(
         "flat_playlist": True,
         "extract_flat": True,
         "playlistend": limit * 3,
+        **(extra_opts or {}),
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
@@ -62,11 +64,14 @@ def get_channel_candidates(
     return candidates[:limit]
 
 
-def enrich_candidate(candidate: ReleaseCandidate) -> ReleaseCandidate:
+def enrich_candidate(
+    candidate: ReleaseCandidate, extra_opts: dict[str, Any] | None = None
+) -> ReleaseCandidate:
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        **(extra_opts or {}),
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
@@ -91,7 +96,9 @@ def enrich_candidate(candidate: ReleaseCandidate) -> ReleaseCandidate:
     )
 
 
-def download_audio(candidate: ReleaseCandidate, output_dir: Path) -> Path:
+def download_audio(
+    candidate: ReleaseCandidate, output_dir: Path, extra_opts: dict[str, Any] | None = None
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     opts: dict[str, Any] = {
         "format": "bestaudio",
@@ -100,6 +107,7 @@ def download_audio(candidate: ReleaseCandidate, output_dir: Path) -> Path:
         "no_warnings": True,
         "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "wav"}],
         "postprocessor_args": {"ffmpeg": ["-ar", "16000", "-ac", "1"]},
+        **(extra_opts or {}),
     }
     with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
         info = ydl.extract_info(candidate.url, download=True)

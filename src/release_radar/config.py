@@ -9,17 +9,48 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     youtube_sources: str = (
+        # filmes
         "movies|@RottenTomatoesTRAILERS,"
+        "movies|@KinoCheck,"
+        "movies|@ONEMedia,"
+        "movies|@A24,"
+        "movies|@20thcenturystudios,"
+        "movies|@UniversalPictures,"
+        "movies|@warnerbros,"
+        "movies|@MARVEL,"
+        # series
         "series|@NetflixBrasil,"
+        "series|@Netflix,"
+        "series|@PrimeVideo,"
+        "series|@DisneyPlus,"
+        "series|@AppleTV,"
+        "series|@HBOMax,"
+        # jogos
         "games|@PlayStation,"
         "games|@XboxViewTV,"
         "games|@NintendoAmerica,"
-        "anime|@Crunchyroll"
+        "games|@IGN,"
+        "games|@GameSpot,"
+        "games|@ubisoft,"
+        "games|@Bethesda,"
+        "games|@GameTrailers,"
+        # animes
+        "anime|@Crunchyroll,"
+        "anime|@CrunchyrollDubs,"
+        "anime|@TOHOanimation,"
+        "anime|@AniplexUSA,"
+        "anime|@netflixanime,"
+        "anime|@AnimeExpo"
     )
     source_limit: int = 6
     max_items_per_run: int = 12
     max_transcription_seconds: int = 420
     analyze_video_content: bool = True
+
+    # Anti-bloqueio do YouTube (yt-dlp). player_client alternativo e/ou cookies.
+    # Ex.: youtube_player_client="tv,mweb,web_safari"; youtube_cookies_file="/secrets/yt/cookies.txt"
+    youtube_player_client: str = ""
+    youtube_cookies_file: str = ""
 
     whisper_base_url: str = "http://whisper.ai.svc.cluster.local:9000"
     whisper_timeout: float = 600.0
@@ -47,6 +78,17 @@ class Settings(BaseSettings):
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def yt_dlp_opts(self) -> dict:
+        """Opcoes extras de yt-dlp para driblar bloqueio (player_client/cookies)."""
+        opts: dict = {}
+        clients = [c.strip() for c in self.youtube_player_client.split(",") if c.strip()]
+        if clients:
+            opts["extractor_args"] = {"youtube": {"player_client": clients}}
+        if self.youtube_cookies_file:
+            opts["cookiefile"] = self.youtube_cookies_file
+        return opts
 
     @property
     def parsed_sources(self) -> list[tuple[str, str]]:

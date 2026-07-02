@@ -62,7 +62,7 @@ async def run_pipeline(
         for candidate in candidates:
             if stats.analyzed >= max_items:
                 break
-            enriched = enrich_candidate(candidate)
+            enriched = enrich_candidate(candidate, settings.yt_dlp_opts)
             fingerprint = content_hash(enriched.title, enriched.channel, enriched.description)
             if get_item(conn, enriched.youtube_id):
                 stats.skipped_existing += 1
@@ -110,6 +110,7 @@ def discover(settings: Settings) -> list[ReleaseCandidate]:
                 channel=channel,
                 limit=settings.source_limit,
                 max_duration=max(settings.max_transcription_seconds * 2, 900),
+                extra_opts=settings.yt_dlp_opts,
             )
         )
     candidates.sort(key=lambda item: item.upload_date or "", reverse=True)
