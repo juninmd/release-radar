@@ -40,7 +40,10 @@ def get_channel_candidates(
         if not entry:
             continue
         duration = int(entry.get("duration") or 0)
-        if duration <= 0 or duration > max_duration:
+        # extract_flat frequentemente omite duration (vem 0/None) na aba /videos.
+        # So descarta por duracao quando ela e conhecida; duracao real e checada
+        # depois em enrich_candidate/maybe_transcribe.
+        if duration > max_duration:
             continue
         if entry.get("live_status") == "is_upcoming":
             continue
