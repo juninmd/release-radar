@@ -29,6 +29,8 @@ class Settings(BaseSettings):
         "games|@PlayStation,"
         "games|@XboxViewTV,"
         "games|@NintendoAmerica,"
+        "games|@EASPORTSFC,"
+        "games|@EASPORTS,"
         "games|@IGN,"
         "games|@GameSpot,"
         "games|@ubisoft,"
@@ -42,8 +44,8 @@ class Settings(BaseSettings):
         "anime|@netflixanime,"
         "anime|@AnimeExpo"
     )
-    source_limit: int = 6
-    max_items_per_run: int = 12
+    source_limit: int = 10
+    max_items_per_run: int = 20
     max_transcription_seconds: int = 420
     analyze_video_content: bool = True
 
