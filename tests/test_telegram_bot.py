@@ -4,7 +4,7 @@ from release_radar.telegram_bot import format_message
 
 def test_format_message_contains_analysis_blocks() -> None:
     candidate = ReleaseCandidate(
-        youtube_id="abc",
+        external_id="abc",
         title="Trailer X",
         url="https://youtu.be/abc",
         channel="Canal",

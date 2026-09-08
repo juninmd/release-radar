@@ -4,7 +4,7 @@ from release_radar.models import ReleaseCandidate
 
 def make_candidate(title: str = "Big Game - Launch Trailer") -> ReleaseCandidate:
     return ReleaseCandidate(
-        youtube_id="abc",
+        external_id="abc",
         title=title,
         url="https://youtu.be/abc",
         channel="Canal",
@@ -25,3 +25,25 @@ def test_analysis_from_json_defaults_to_candidate_values() -> None:
 def test_fallback_identifies_release_words() -> None:
     analysis = fallback_analysis(make_candidate(), "")
     assert analysis.is_release_signal is True
+
+
+def test_fallback_treats_upcoming_store_sources_as_release_signal() -> None:
+    candidate = ReleaseCandidate(
+        external_id="steam:1",
+        title="Halloween: The Game",
+        url="https://store.steampowered.com/app/1/",
+        channel="Steam",
+        category="games",
+        duration=0,
+        upload_date="20260908",
+        thumbnail=None,
+        source="steam",
+    )
+
+    # Sem LLM, o titulo de loja nao casa com palavra-chave; a fonte e o sinal.
+    assert fallback_analysis(candidate, transcript="").is_release_signal
+
+
+def test_fallback_still_rejects_unrelated_youtube_title() -> None:
+    candidate = make_candidate(title="Bastidores do estudio")
+    assert not fallback_analysis(candidate, transcript="").is_release_signal

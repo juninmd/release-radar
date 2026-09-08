@@ -19,11 +19,14 @@ from .db import (
 )
 from .fingerprint import content_hash
 from .models import ReleaseCandidate
+from .sources import discover_extra_sources
 from .telegram_bot import TelegramPublisher
 from .transcriber import transcribe_audio
 from .youtube import download_audio, enrich_candidate, get_channel_candidates
 
 logger = logging.getLogger(__name__)
+
+YOUTUBE_SOURCE = "youtube"
 
 
 @dataclass
@@ -62,9 +65,13 @@ async def run_pipeline(
         for candidate in candidates:
             if stats.analyzed >= max_items:
                 break
-            enriched = enrich_candidate(candidate, settings.yt_dlp_opts)
+            enriched = (
+                enrich_candidate(candidate, settings.yt_dlp_opts)
+                if candidate.source == YOUTUBE_SOURCE
+                else candidate
+            )
             fingerprint = content_hash(enriched.title, enriched.channel, enriched.description)
-            if get_item(conn, enriched.youtube_id):
+            if get_item(conn, enriched.external_id):
                 stats.skipped_existing += 1
                 continue
             if not reserve_candidate(conn, enriched, fingerprint):
@@ -90,19 +97,19 @@ async def run_pipeline(
                     logger.info("Dry-run would post: %s", enriched.title)
                     continue
                 if await publisher.publish(enriched, analysis):
-                    mark_posted(conn, enriched.youtube_id)
+                    mark_posted(conn, enriched.external_id)
                     stats.posted += 1
             except Exception as exc:
                 stats.failed += 1
-                logger.exception("Failed processing %s", enriched.youtube_id)
-                mark_failed(conn, enriched.youtube_id, str(exc), {"title": enriched.title})
+                logger.exception("Failed processing %s", enriched.external_id)
+                mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
     finally:
         conn.close()
     return stats
 
 
 def discover(settings: Settings) -> list[ReleaseCandidate]:
-    candidates: list[ReleaseCandidate] = []
+    candidates: list[ReleaseCandidate] = list(discover_extra_sources(settings))
     for category, channel in settings.parsed_sources:
         candidates.extend(
             get_channel_candidates(
@@ -113,12 +120,35 @@ def discover(settings: Settings) -> list[ReleaseCandidate]:
                 extra_opts=settings.yt_dlp_opts,
             )
         )
-    candidates.sort(key=lambda item: item.upload_date or "", reverse=True)
-    return candidates
+    return interleave_by_source(candidates)
+
+
+def interleave_by_source(candidates: list[ReleaseCandidate]) -> list[ReleaseCandidate]:
+    """Alterna as fontes preservando recencia dentro de cada uma.
+
+    Sem isso, feeds e lojas (datados do dia da coleta) ocupariam todo o
+    max_items_per_run e os trailers do YouTube nunca seriam analisados.
+    """
+    grouped: dict[str, list[ReleaseCandidate]] = {}
+    for candidate in candidates:
+        grouped.setdefault(candidate.source, []).append(candidate)
+    for items in grouped.values():
+        items.sort(key=lambda item: item.upload_date or "", reverse=True)
+    order = sorted(grouped, key=lambda name: (name != YOUTUBE_SOURCE, name))
+    ordered: list[ReleaseCandidate] = []
+    for index in range(max((len(items) for items in grouped.values()), default=0)):
+        for name in order:
+            items = grouped[name]
+            if index < len(items):
+                ordered.append(items[index])
+    return ordered
 
 
 def maybe_transcribe(settings: Settings, candidate: ReleaseCandidate) -> str:
     if not settings.analyze_video_content:
+        return ""
+    # Fontes sem video proprio (Steam, Kitsu, RSS) seguem so com metadados.
+    if candidate.source != YOUTUBE_SOURCE:
         return ""
     if candidate.duration > settings.max_transcription_seconds:
         return ""
@@ -128,7 +158,7 @@ def maybe_transcribe(settings: Settings, candidate: ReleaseCandidate) -> str:
     except Exception:
         logger.exception(
             "Transcription failed for %s; continuing with metadata only",
-            candidate.youtube_id,
+            candidate.external_id,
         )
         return ""
 

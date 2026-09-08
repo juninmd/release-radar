@@ -52,7 +52,7 @@ def get_channel_candidates(
             continue
         candidates.append(
             ReleaseCandidate(
-                youtube_id=video_id,
+                external_id=video_id,
                 title=str(entry.get("title") or ""),
                 url=f"https://www.youtube.com/watch?v={video_id}",
                 channel=str(entry.get("channel") or channel.lstrip("@")),
@@ -80,14 +80,14 @@ def enrich_candidate(
         with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
             info = ydl.extract_info(candidate.url, download=False)
     except Exception:
-        logger.exception("Failed to enrich video %s", candidate.youtube_id)
+        logger.exception("Failed to enrich video %s", candidate.external_id)
         return candidate
 
     description = str(info.get("description") or "")
     thumbnail = info.get("thumbnail") or candidate.thumbnail
     duration = int(info.get("duration") or candidate.duration)
     return ReleaseCandidate(
-        youtube_id=candidate.youtube_id,
+        external_id=candidate.external_id,
         title=str(info.get("title") or candidate.title),
         url=candidate.url,
         channel=str(info.get("channel") or candidate.channel),
@@ -114,7 +114,7 @@ def download_audio(
     }
     with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
         info = ydl.extract_info(candidate.url, download=True)
-    video_id = str(info.get("id") or candidate.youtube_id)
+    video_id = str(info.get("id") or candidate.external_id)
     wav_path = output_dir / f"{video_id}.wav"
     if not wav_path.exists():
         raise FileNotFoundError(f"Expected WAV file not found: {wav_path}")

@@ -44,7 +44,7 @@ def analyze_release(
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError:
-        logger.warning("LLM returned invalid JSON for %s", candidate.youtube_id)
+        logger.warning("LLM returned invalid JSON for %s", candidate.external_id)
         return fallback_analysis(candidate, transcript, raw_text)
     return analysis_from_json(candidate, data)
 
@@ -55,13 +55,13 @@ Analise se isto e lancamento/anuncio/trailer relevante. Se for noticia fria,
 rumor sem material novo, clip antigo ou compilado, marque is_release_signal=false.
 
 Categoria esperada: {candidate.category}
-Canal: {candidate.channel}
-Titulo YouTube: {candidate.title}
+Fonte: {candidate.source} ({candidate.channel})
+Titulo: {candidate.title}
 URL: {candidate.url}
-Descricao YouTube:
+Descricao/metadados da fonte:
 {candidate.description[:8000]}
 
-Transcricao do trailer/video:
+Transcricao do trailer/video (vazio quando a fonte nao tem video):
 {transcript[:12000]}
 
 Retorne JSON com este schema:
@@ -121,7 +121,11 @@ def fallback_analysis(
         "gameplay",
         "announcement",
     )
-    is_release = any(word in title_l for word in release_words)
+    # Steam e Kitsu ja entregam so itens nao lancados; sem LLM, o titulo sozinho
+    # ("Halloween: The Game") nunca casaria com as palavras-chave.
+    is_release = candidate.source in ("steam", "kitsu") or any(
+        word in title_l for word in release_words
+    )
     summary = candidate.description[:700] or transcript[:700]
     return ReleaseAnalysis(
         is_release_signal=is_release,

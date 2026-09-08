@@ -6,7 +6,9 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ReleaseCandidate:
-    youtube_id: str
+    # Ids do YouTube seguem crus (compatibilidade com linhas ja gravadas);
+    # as demais fontes prefixam com o proprio nome, ex.: "steam:730".
+    external_id: str
     title: str
     url: str
     channel: str
@@ -15,6 +17,7 @@ class ReleaseCandidate:
     upload_date: str | None
     thumbnail: str | None
     description: str = ""
+    source: str = "youtube"
 
 
 @dataclass(frozen=True)

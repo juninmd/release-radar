@@ -30,7 +30,7 @@ class TelegramPublisher:
     async def publish(self, candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> bool:
         bot = self.bot
         if bot is None:
-            logger.warning("Telegram not configured; skipping %s", candidate.youtube_id)
+            logger.warning("Telegram not configured; skipping %s", candidate.external_id)
             return False
 
         text = format_message(candidate, analysis)
@@ -58,7 +58,7 @@ class TelegramPublisher:
                 )
             return True
         except Exception:
-            logger.exception("Failed to publish %s", candidate.youtube_id)
+            logger.exception("Failed to publish %s", candidate.external_id)
             return False
 
 

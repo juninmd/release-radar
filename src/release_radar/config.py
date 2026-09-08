@@ -44,13 +44,38 @@ class Settings(BaseSettings):
         "anime|@netflixanime,"
         "anime|@AnimeExpo"
     )
+    # Feeds RSS oficiais/editoriais (sem API key). Formato: "categoria|url".
+    rss_sources: str = (
+        "games|https://blog.playstation.com/feed/,"
+        "games|https://news.xbox.com/en-us/feed/,"
+        "games|https://store.steampowered.com/feeds/news.xml,"
+        "anime|https://www.animenewsnetwork.com/all/rss.xml,"
+        "movies|https://www.slashfilm.com/feed/,"
+        "movies|https://collider.com/feed/,"
+        "series|https://deadline.com/feed/"
+    )
+    rss_limit: int = 5
+
+    # Steam: jogos "em breve" mais populares da loja (API publica, sem key).
+    steam_enabled: bool = True
+    steam_limit: int = 8
+    steam_country: str = "br"
+    steam_language: str = "portuguese"
+
+    # Kitsu: animes anunciados, ordenados por audiencia (API publica, sem key).
+    kitsu_enabled: bool = True
+    kitsu_limit: int = 8
+
+    http_timeout: float = 20.0
+
     source_limit: int = 10
     max_items_per_run: int = 20
     max_transcription_seconds: int = 420
     analyze_video_content: bool = True
 
     # Anti-bloqueio do YouTube (yt-dlp). player_client alternativo e/ou cookies.
-    # Ex.: youtube_player_client="tv,mweb,web_safari"; youtube_cookies_file="/secrets/yt/cookies.txt"
+    # Ex.: youtube_player_client="tv,mweb,web_safari";
+    #      youtube_cookies_file="/secrets/yt/cookies.txt"
     youtube_player_client: str = ""
     youtube_cookies_file: str = ""
 
@@ -94,21 +119,30 @@ class Settings(BaseSettings):
 
     @property
     def parsed_sources(self) -> list[tuple[str, str]]:
-        sources: list[tuple[str, str]] = []
-        for raw in self.youtube_sources.split(","):
-            item = raw.strip()
-            if not item:
-                continue
-            if "|" not in item:
-                sources.append(("unknown", item))
-                continue
-            category, channel = item.split("|", 1)
-            sources.append((category.strip(), channel.strip()))
-        return sources
+        return _parse_categorized(self.youtube_sources)
+
+    @property
+    def parsed_rss_sources(self) -> list[tuple[str, str]]:
+        return _parse_categorized(self.rss_sources)
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+
+def _parse_categorized(raw_value: str) -> list[tuple[str, str]]:
+    """Converte "categoria|alvo,categoria|alvo" em pares; sem "|" cai em unknown."""
+    sources: list[tuple[str, str]] = []
+    for raw in raw_value.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        if "|" not in item:
+            sources.append(("unknown", item))
+            continue
+        category, target = item.split("|", 1)
+        sources.append((category.strip(), target.strip()))
+    return sources
 
 
 @lru_cache

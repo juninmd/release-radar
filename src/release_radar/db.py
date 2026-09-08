@@ -15,14 +15,42 @@ def get_connection(dsn: str) -> psycopg2.extensions.connection:
     return conn
 
 
+# Renomeia youtube_id -> external_id em bases criadas antes das fontes nao-YouTube.
+# Reversivel: ALTER TABLE ... RENAME COLUMN external_id TO youtube_id.
+_MIGRATIONS = """
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'release_items' AND column_name = 'youtube_id'
+    ) THEN
+        ALTER TABLE release_items RENAME COLUMN youtube_id TO external_id;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'release_events' AND column_name = 'youtube_id'
+    ) THEN
+        ALTER TABLE release_events RENAME COLUMN youtube_id TO external_id;
+    END IF;
+END $$;
+
+-- Sem isto o indice antigo sobrevive ao rename e o CREATE INDEX abaixo duplicaria.
+ALTER INDEX IF EXISTS idx_release_events_youtube_id RENAME TO idx_release_events_external_id;
+"""
+
+
 def init_db(dsn: str) -> None:
     conn = get_connection(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute(_MIGRATIONS)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS release_items (
                     id BIGSERIAL PRIMARY KEY,
-                    youtube_id TEXT NOT NULL UNIQUE,
+                    external_id TEXT NOT NULL UNIQUE,
+                    source TEXT NOT NULL DEFAULT 'youtube',
                     content_hash TEXT NOT NULL UNIQUE,
                     title TEXT NOT NULL,
                     url TEXT NOT NULL UNIQUE,
@@ -46,12 +74,16 @@ def init_db(dsn: str) -> None:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS release_events (
                     id BIGSERIAL PRIMARY KEY,
-                    youtube_id TEXT NOT NULL,
+                    external_id TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     detail JSONB DEFAULT '{}'::jsonb,
                     created_at TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             """)
+            cur.execute(
+                "ALTER TABLE release_items "
+                "ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'youtube'"
+            )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_release_items_status ON release_items(status)"
             )
@@ -59,17 +91,17 @@ def init_db(dsn: str) -> None:
                 "CREATE INDEX IF NOT EXISTS idx_release_items_category ON release_items(category)"
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_release_events_youtube_id "
-                "ON release_events(youtube_id)"
+                "CREATE INDEX IF NOT EXISTS idx_release_events_external_id "
+                "ON release_events(external_id)"
             )
         conn.commit()
     finally:
         conn.close()
 
 
-def get_item(conn: psycopg2.extensions.connection, youtube_id: str) -> dict[str, Any] | None:
+def get_item(conn: psycopg2.extensions.connection, external_id: str) -> dict[str, Any] | None:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("SELECT * FROM release_items WHERE youtube_id = %s", (youtube_id,))
+        cur.execute("SELECT * FROM release_items WHERE external_id = %s", (external_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 
@@ -83,13 +115,14 @@ def reserve_candidate(
         cur.execute(
             """
             INSERT INTO release_items
-                (youtube_id, content_hash, title, url, channel, category, duration,
+                (external_id, source, content_hash, title, url, channel, category, duration,
                  upload_date, thumbnail, description)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
             """,
             (
-                candidate.youtube_id,
+                candidate.external_id,
+                candidate.source,
                 content_hash,
                 candidate.title,
                 candidate.url,
@@ -122,7 +155,7 @@ def save_analysis(
                 is_release_signal = %s,
                 status = %s,
                 updated_at = NOW()
-            WHERE youtube_id = %s
+            WHERE external_id = %s
             """,
             (
                 transcript,
@@ -130,37 +163,37 @@ def save_analysis(
                 analysis.summary,
                 analysis.is_release_signal,
                 "analyzed" if analysis.is_release_signal else "skipped",
-                candidate.youtube_id,
+                candidate.external_id,
             ),
         )
         event_type = "analysis_saved" if analysis.is_release_signal else "analysis_skipped"
         cur.execute(
-            "INSERT INTO release_events (youtube_id, event_type, detail) VALUES (%s, %s, %s)",
-            (candidate.youtube_id, event_type, Json({"confidence": analysis.confidence})),
+            "INSERT INTO release_events (external_id, event_type, detail) VALUES (%s, %s, %s)",
+            (candidate.external_id, event_type, Json({"confidence": analysis.confidence})),
         )
     conn.commit()
 
 
-def mark_posted(conn: psycopg2.extensions.connection, youtube_id: str) -> None:
+def mark_posted(conn: psycopg2.extensions.connection, external_id: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE release_items
             SET status = 'posted', posted_at = NOW(), updated_at = NOW()
-            WHERE youtube_id = %s
+            WHERE external_id = %s
             """,
-            (youtube_id,),
+            (external_id,),
         )
         cur.execute(
-            "INSERT INTO release_events (youtube_id, event_type) VALUES (%s, 'telegram_posted')",
-            (youtube_id,),
+            "INSERT INTO release_events (external_id, event_type) VALUES (%s, 'telegram_posted')",
+            (external_id,),
         )
     conn.commit()
 
 
 def mark_failed(
     conn: psycopg2.extensions.connection,
-    youtube_id: str,
+    external_id: str,
     reason: str,
     detail: dict[str, Any] | None = None,
 ) -> None:
@@ -169,13 +202,13 @@ def mark_failed(
             """
             UPDATE release_items
             SET status = 'failed', skipped_reason = %s, updated_at = NOW()
-            WHERE youtube_id = %s
+            WHERE external_id = %s
             """,
-            (reason[:500], youtube_id),
+            (reason[:500], external_id),
         )
         cur.execute(
-            "INSERT INTO release_events (youtube_id, event_type, detail) VALUES (%s, %s, %s)",
-            (youtube_id, "failed", Json(detail or {"reason": reason})),
+            "INSERT INTO release_events (external_id, event_type, detail) VALUES (%s, %s, %s)",
+            (external_id, "failed", Json(detail or {"reason": reason})),
         )
     conn.commit()
 
