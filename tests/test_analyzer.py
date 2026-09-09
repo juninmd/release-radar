@@ -47,3 +47,30 @@ def test_fallback_treats_upcoming_store_sources_as_release_signal() -> None:
 def test_fallback_still_rejects_unrelated_youtube_title() -> None:
     candidate = make_candidate(title="Bastidores do estudio")
     assert not fallback_analysis(candidate, transcript="").is_release_signal
+
+
+def test_analysis_from_json_parses_and_clamps_hype_signals() -> None:
+    analysis = analysis_from_json(
+        make_candidate(),
+        {
+            "is_release_signal": True,
+            "hype": {
+                "fanbase": 9,
+                "pedigree": "7",
+                "track_record": 42,
+                "buzz": -3,
+                "rationale": "Franquia consagrada",
+            },
+        },
+    )
+    assert analysis.hype.fanbase == 9
+    assert analysis.hype.pedigree == 7
+    assert analysis.hype.track_record == 10
+    assert analysis.hype.buzz == 0
+    assert analysis.hype.rationale == "Franquia consagrada"
+
+
+def test_analysis_from_json_tolerates_missing_or_malformed_hype() -> None:
+    assert analysis_from_json(make_candidate(), {}).hype.fanbase == 0
+    assert analysis_from_json(make_candidate(), {"hype": "n/a"}).hype.fanbase == 0
+    assert analysis_from_json(make_candidate(), {"hype": {"fanbase": "alto"}}).hype.fanbase == 0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 import psycopg2
@@ -214,4 +215,4 @@ def mark_failed(
 
 
 def analysis_to_json(analysis: ReleaseAnalysis) -> dict[str, Any]:
-    return json.loads(json.dumps(analysis.raw or analysis.__dict__, default=str))
+    return json.loads(json.dumps(analysis.raw or asdict(analysis), default=str))

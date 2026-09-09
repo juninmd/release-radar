@@ -21,6 +21,17 @@ class ReleaseCandidate:
 
 
 @dataclass(frozen=True)
+class HypeSignals:
+    """Notas 0-10 dadas pela LLM a partir do conhecimento previo sobre a obra."""
+
+    fanbase: int = 0  # tamanho/engajamento da base de fas da franquia, IP ou elenco
+    pedigree: int = 0  # qualidade esperada por estudio, diretor, showrunner ou dev
+    track_record: int = 0  # historico de notas (IMDb, Metacritic, Steam, MAL) e bilheteria
+    buzz: int = 0  # momento: anuncio inedito, evento, retorno aguardado, viralizacao
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
 class ReleaseAnalysis:
     is_release_signal: bool
     category: str
@@ -36,6 +47,7 @@ class ReleaseAnalysis:
     audience: str
     confidence: float
     tags: list[str] = field(default_factory=list)
+    hype: HypeSignals = field(default_factory=HypeSignals)
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property

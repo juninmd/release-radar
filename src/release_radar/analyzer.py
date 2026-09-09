@@ -6,7 +6,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from .models import ReleaseAnalysis, ReleaseCandidate
+from .models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,20 @@ Descricao/metadados da fonte:
 Transcricao do trailer/video (vazio quando a fonte nao tem video):
 {transcript[:12000]}
 
+Avalie tambem o potencial de hype com notas inteiras de 0 a 10, usando seu
+conhecimento previo sobre a obra, a franquia e os criadores:
+- fanbase: tamanho e engajamento da base de fas da franquia, IP ou elenco
+  (0 = IP inedito sem publico formado, 10 = fenomeno global).
+- pedigree: qualidade esperada pelo estudio, diretor, showrunner,
+  desenvolvedora ou autor envolvidos.
+- track_record: historico de recepcao das obras anteriores da franquia e dos
+  criadores (IMDb, Rotten Tomatoes, Metacritic, reviews da Steam,
+  MyAnimeList) e desempenho comercial.
+- buzz: momento do anuncio: inedito, evento grande, retorno muito aguardado,
+  viralizacao.
+Se nao reconhecer a obra nem os criadores, de notas baixas (0-3) e diga isso
+na rationale. Nunca invente notas, premios ou bilheterias.
+
 Retorne JSON com este schema:
 {{
   "is_release_signal": true,
@@ -79,7 +93,14 @@ Retorne JSON com este schema:
   "why_it_matters": "por que vale acompanhar, contexto de franquia/estudio/publico",
   "audience": "para quem e indicado",
   "tags": ["trailer", "estreia"],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "hype": {{
+    "fanbase": 0,
+    "pedigree": 0,
+    "track_record": 0,
+    "buzz": 0,
+    "rationale": "1-2 frases citando franquia, criadores e notas historicas"
+  }}
 }}
 """.strip()
 
@@ -100,8 +121,28 @@ def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> Rel
         audience=str(data.get("audience") or ""),
         confidence=float(data.get("confidence") or 0.0),
         tags=[str(item) for item in data.get("tags", []) if item],
+        hype=hype_from_json(data.get("hype")),
         raw=data,
     )
+
+
+def hype_from_json(data: Any) -> HypeSignals:
+    if not isinstance(data, dict):
+        return HypeSignals()
+    return HypeSignals(
+        fanbase=_signal(data.get("fanbase")),
+        pedigree=_signal(data.get("pedigree")),
+        track_record=_signal(data.get("track_record")),
+        buzz=_signal(data.get("buzz")),
+        rationale=str(data.get("rationale") or ""),
+    )
+
+
+def _signal(value: Any) -> int:
+    try:
+        return max(0, min(10, int(float(value))))
+    except (TypeError, ValueError):
+        return 0
 
 
 def fallback_analysis(

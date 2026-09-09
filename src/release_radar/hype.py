@@ -1,39 +1,54 @@
 from __future__ import annotations
 
+import re
+from datetime import date
+
 from .models import ReleaseAnalysis
 
-# Palavras no campo release_window que indicam proximidade -> mais hype.
-_SOON_WORDS = (
-    "hoje",
-    "amanha",
-    "amanhã",
-    "semana",
-    "breve",
-    "ja disponivel",
-    "já disponível",
-    "disponivel",
-    "disponível",
-    "agora",
-    "2025",
-    "2026",
+# Palavras inteiras no release_window que indicam proximidade -> mais hype.
+_SOON_WORDS = frozenset(
+    {
+        "hoje",
+        "amanha",
+        "amanhã",
+        "semana",
+        "breve",
+        "agora",
+        "disponivel",
+        "disponível",
+    }
 )
 
+# Pesos dos sinais 0-10 avaliados pela LLM; somam 70 dos 100 pontos.
+_SIGNAL_WEIGHTS = {"fanbase": 2.5, "track_record": 2.0, "pedigree": 1.5, "buzz": 1.0}
 
-def hype_score(analysis: ReleaseAnalysis) -> int:
+
+def hype_score(analysis: ReleaseAnalysis, today: date | None = None) -> int:
     """Pontua 0-100 o quao 'imperdivel' e um lancamento, de forma deterministica.
 
-    Combina a confianca do analisador, o sinal de lancamento, a amplitude de
-    plataformas/generos e a proximidade declarada da janela de lancamento.
+    70 pontos vem do conhecimento previo da LLM (base de fas, historico de
+    notas, pedigree, buzz); 30 vem de metadados do proprio item (confianca,
+    sinal de lancamento, proximidade). Sem sinais da LLM o teto e 30.
     """
-    score = round(max(0.0, min(1.0, analysis.confidence)) * 55)
+    score = sum(
+        max(0, min(10, getattr(analysis.hype, name))) * weight
+        for name, weight in _SIGNAL_WEIGHTS.items()
+    )
+    score += max(0.0, min(1.0, analysis.confidence)) * 10
     if analysis.is_release_signal:
-        score += 20
-    score += min(len(analysis.platforms), 3) * 5
-    score += min(len(analysis.genres), 2) * 3
-    window = analysis.release_window.lower()
-    if any(word in window for word in _SOON_WORDS):
         score += 10
-    return max(0, min(100, score))
+    if is_soon(analysis.release_window, today or date.today()):
+        score += 10
+    return max(0, min(100, round(score)))
+
+
+def is_soon(window: str, today: date) -> bool:
+    """Janela declarada aponta para agora, este ano ou o proximo."""
+    words = set(re.findall(r"\w+", window.lower()))
+    if words & _SOON_WORDS:
+        return True
+    years = {int(word) for word in words if len(word) == 4 and word.isdigit()}
+    return any(today.year <= year <= today.year + 1 for year in years)
 
 
 def hype_badge(score: int) -> str:

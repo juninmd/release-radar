@@ -1,4 +1,4 @@
-from release_radar.models import ReleaseAnalysis, ReleaseCandidate
+from release_radar.models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
 from release_radar.telegram_bot import format_message
 
 
@@ -28,6 +28,7 @@ def test_format_message_contains_analysis_blocks() -> None:
         audience="Fans",
         confidence=0.9,
         tags=["rpg"],
+        hype=HypeSignals(fanbase=8, rationale="Franquia com base fiel"),
     )
 
     text = format_message(candidate, analysis)
@@ -36,3 +37,4 @@ def test_format_message_contains_analysis_blocks() -> None:
     assert "Leitura do trailer" in text
     assert "Resumo transcrito" in text
     assert "PC" in text
+    assert "Franquia com base fiel" in text

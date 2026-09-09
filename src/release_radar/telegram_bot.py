@@ -83,6 +83,8 @@ def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
         f"🎯 Confianca: {analysis.confidence:.0%}",
         escape(hype_badge(hype_score(analysis))),
     ]
+    if analysis.hype.rationale:
+        lines.append(f"💡 {escape(analysis.hype.rationale)}")
     if analysis.platforms:
         lines.append(f"🕹 Plataformas/onde ver: {escape(', '.join(analysis.platforms))}")
     if analysis.genres:
