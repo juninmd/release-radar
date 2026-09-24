@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     whisper_timeout: float = 600.0
 
     llm_base_url: str = "http://litellm.ai.svc.cluster.local:4000/v1"
-    llm_model: str = "cloud/llama-8b"
+    llm_model: str = "cloud/auto"
     llm_api_key: str = ""
     llm_timeout: float = 120.0
 
