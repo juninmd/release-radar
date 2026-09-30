@@ -4,6 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+from rich.console import Console
 from rich.logging import RichHandler
 
 from .analyzer import analyze_release
@@ -14,11 +15,13 @@ from .db import (
     init_db,
     mark_failed,
     mark_posted,
+    mark_skipped,
     reserve_candidate,
     save_analysis,
 )
 from .fingerprint import content_hash
 from .models import ReleaseCandidate
+from .release_policy import already_released, confirmed_upcoming
 from .sources import discover_extra_sources
 from .telegram_bot import TelegramPublisher
 from .transcriber import transcribe_audio
@@ -37,6 +40,8 @@ class RunStats:
     posted: int = 0
     skipped_existing: int = 0
     skipped_not_release: int = 0
+    skipped_released: int = 0
+    skipped_unconfirmed: int = 0
     failed: int = 0
 
 
@@ -44,7 +49,7 @@ def configure_logging(verbose: bool = False) -> None:
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(message)s",
-        handlers=[RichHandler(rich_tracebacks=True)],
+        handlers=[RichHandler(console=Console(stderr=True), rich_tracebacks=True)],
     )
 
 
@@ -74,10 +79,11 @@ async def run_pipeline(
             if get_item(conn, enriched.external_id):
                 stats.skipped_existing += 1
                 continue
-            if not reserve_candidate(conn, enriched, fingerprint):
+            if not dry_run and not reserve_candidate(conn, enriched, fingerprint):
                 stats.skipped_existing += 1
                 continue
-            stats.reserved += 1
+            if not dry_run:
+                stats.reserved += 1
             try:
                 transcript = maybe_transcribe(settings, enriched)
                 analysis = analyze_release(
@@ -88,10 +94,21 @@ async def run_pipeline(
                     model=settings.llm_model,
                     timeout=settings.llm_timeout,
                 )
-                save_analysis(conn, enriched, transcript, analysis)
+                if not dry_run:
+                    save_analysis(conn, enriched, transcript, analysis)
                 stats.analyzed += 1
+                if already_released(analysis):
+                    if not dry_run:
+                        mark_skipped(conn, enriched.external_id, "Obra ja lancada")
+                    stats.skipped_released += 1
+                    continue
                 if not analysis.is_release_signal:
                     stats.skipped_not_release += 1
+                    continue
+                if not confirmed_upcoming(analysis):
+                    if not dry_run:
+                        mark_skipped(conn, enriched.external_id, "Estreia futura nao confirmada")
+                    stats.skipped_unconfirmed += 1
                     continue
                 if dry_run:
                     logger.info("Dry-run would post: %s", enriched.title)
@@ -102,7 +119,8 @@ async def run_pipeline(
             except Exception as exc:
                 stats.failed += 1
                 logger.exception("Failed processing %s", enriched.external_id)
-                mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
+                if not dry_run:
+                    mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
     finally:
         conn.close()
     return stats

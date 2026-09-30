@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import date
 from typing import Any
 
 from openai import OpenAI
@@ -9,6 +11,16 @@ from openai import OpenAI
 from .models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
 
 logger = logging.getLogger(__name__)
+_RELEASE_DATE_RE = re.compile(
+    r"(?:release date|lancamento previsto|lançamento previsto|estreia prevista)"
+    r"\s*:\s*(\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE,
+)
+
+
+def source_release_date(candidate: ReleaseCandidate) -> str:
+    match = _RELEASE_DATE_RE.search(candidate.description)
+    return match.group(1) if match else ""
 
 
 def analyze_release(
@@ -51,8 +63,13 @@ def analyze_release(
 
 def build_prompt(candidate: ReleaseCandidate, transcript: str) -> str:
     return f"""
-Analise se isto e lancamento/anuncio/trailer relevante. Se for noticia fria,
-rumor sem material novo, clip antigo ou compilado, marque is_release_signal=false.
+Analise se isto e anuncio de uma obra que AINDA VAI estrear. Se for noticia fria,
+rumor, clip antigo, compilado, review, ou obra ja lancada, marque is_release_signal=false.
+Hoje e {date.today().isoformat()}. Use essa data apenas para comparar datas;
+nunca invente data de estreia. "Launch trailer" sozinho nao prova que ja lancou.
+Marque upcoming somente se os metadados confirmarem uma estreia futura ou anuncio
+inedito de obra ainda indisponivel. Sem essa evidencia, use unknown. Titulos devem
+preservar numero de sequencia, temporada, remake e ano quando identificarem a obra.
 
 Categoria esperada: {candidate.category}
 Fonte: {candidate.source} ({candidate.channel})
@@ -85,6 +102,8 @@ Retorne JSON com este schema:
   "title": "nome comercial em PT-BR quando possivel",
   "original_title": "titulo original",
   "release_window": "data, janela ou desconhecido",
+  "release_date": "AAAA-MM-DD se a fonte informar uma data exata, senao vazio",
+  "release_status": "upcoming|released|unknown (released se ja estiver disponivel)",
   "platforms": ["cinema", "Netflix", "PS5"],
   "genres": ["acao"],
   "synopsis": "sinopse rica em 2-4 frases",
@@ -107,7 +126,7 @@ Retorne JSON com este schema:
 
 def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> ReleaseAnalysis:
     return ReleaseAnalysis(
-        is_release_signal=bool(data.get("is_release_signal")),
+        is_release_signal=data.get("is_release_signal") is True,
         category=str(data.get("category") or candidate.category),
         title=str(data.get("title") or candidate.title),
         original_title=str(data.get("original_title") or candidate.title),
@@ -123,7 +142,14 @@ def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> Rel
         tags=[str(item) for item in data.get("tags", []) if item],
         hype=hype_from_json(data.get("hype")),
         raw=data,
+        release_date=source_release_date(candidate) or str(data.get("release_date") or ""),
+        release_status=release_status_from_json(data.get("release_status")),
     )
+
+
+def release_status_from_json(value: Any) -> str:
+    status = str(value or "unknown").strip().lower()
+    return status if status in {"upcoming", "released", "unknown"} else "unknown"
 
 
 def hype_from_json(data: Any) -> HypeSignals:
@@ -167,23 +193,24 @@ def fallback_analysis(
     is_release = candidate.source in ("steam", "kitsu") or any(
         word in title_l for word in release_words
     )
+    release_date = source_release_date(candidate)
     summary = candidate.description[:700] or transcript[:700]
     return ReleaseAnalysis(
         is_release_signal=is_release,
         category=candidate.category,
         title=candidate.title,
         original_title=candidate.title,
-        release_window="desconhecido",
+        release_window=release_date or "desconhecido",
         platforms=[],
         genres=[],
         synopsis=summary,
-        trailer_reading=(
-            "Analise LLM indisponivel; item identificado por heuristica do titulo/descricao."
-        ),
+        trailer_reading="Resumo baseado no título e na descrição da fonte.",
         transcript_summary=transcript[:700],
-        why_it_matters="Requer revisao posterior com LLM para contexto completo.",
-        audience="Publico interessado em novidades de cultura pop.",
+        why_it_matters="Consulte a fonte original para acompanhar os próximos anúncios desta obra.",
+        audience="Quem acompanha novidades de cultura pop.",
         confidence=0.35 if is_release else 0.1,
         tags=["heuristic"],
         raw={"fallback": True, "raw_text": raw_text},
+        release_date=release_date,
+        release_status="upcoming" if candidate.source in ("steam", "kitsu") else "unknown",
     )

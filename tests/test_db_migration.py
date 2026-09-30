@@ -7,14 +7,11 @@ Pula quando `pgserver` nao esta instalado:
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 
 from release_radar.db import get_connection, get_item, init_db, mark_posted, reserve_candidate
 from release_radar.models import ReleaseCandidate
-
-pgserver = pytest.importorskip("pgserver", reason="requer pgserver para subir um Postgres real")
 
 # Schema anterior as fontes nao-YouTube, com uma linha ja publicada.
 LEGACY_SCHEMA = """
@@ -44,18 +41,14 @@ INSERT INTO release_events (youtube_id, event_type) VALUES ('legacyVid', 'telegr
 
 
 @pytest.fixture
-def legacy_dsn(tmp_path: Path) -> Iterator[str]:
-    server = pgserver.get_server(tmp_path / "pg")
-    dsn = server.get_uri()
+def legacy_dsn(postgres_dsn: str) -> Iterator[str]:
+    dsn = postgres_dsn
     conn = get_connection(dsn)
     conn.autocommit = True
     with conn.cursor() as cur:
         cur.execute(LEGACY_SCHEMA)
     conn.close()
-    try:
-        yield dsn
-    finally:
-        server.cleanup()
+    yield dsn
 
 
 def steam_candidate() -> ReleaseCandidate:
@@ -131,7 +124,8 @@ def test_legacy_event_index_is_renamed_not_duplicated(legacy_dsn: str) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT indexname FROM pg_indexes "
-                "WHERE tablename = 'release_events' AND indexname LIKE 'idx_%'"
+                "WHERE schemaname = current_schema() "
+                "AND tablename = 'release_events' AND indexname LIKE 'idx_%'"
             )
             indexes = sorted(row[0] for row in cur.fetchall())
 

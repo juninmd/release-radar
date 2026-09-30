@@ -3,11 +3,13 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from psycopg2.extensions import make_dsn
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     youtube_sources: str = (
         # filmes
         "movies|@RottenTomatoesTRAILERS,"
@@ -101,9 +103,12 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
-        return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        return make_dsn(
+            host=self.postgres_host,
+            port=self.postgres_port,
+            dbname=self.postgres_db,
+            user=self.postgres_user,
+            password=self.postgres_password,
         )
 
     @property
@@ -124,10 +129,6 @@ class Settings(BaseSettings):
     @property
     def parsed_rss_sources(self) -> list[tuple[str, str]]:
         return _parse_categorized(self.rss_sources)
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 def _parse_categorized(raw_value: str) -> list[tuple[str, str]]:

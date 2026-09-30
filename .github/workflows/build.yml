@@ -7,22 +7,56 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: radar_ci
+          POSTGRES_DB: radar_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d radar_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RELEASE_RADAR_TEST_DSN: postgresql://postgres:radar_ci@127.0.0.1:5432/radar_test
+      RELEASE_RADAR_SCREENSHOT_DIR: artifacts/frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version-file: "pyproject.toml"
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked --group browser
 
       - name: Lint with ruff
         run: uv run ruff check .
+
+      - name: Install Chromium
+        run: uv run --group browser playwright install --with-deps chromium
+
+      - name: Test bot, database, HTTP API and frontend
+        run: uv run --group browser pytest -q
+
+      - name: Build distributable package
+        run: uv build
+
+      - name: Save UI previews
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-radar-ui-preview
+          path: artifacts/frontend/
+          if-no-files-found: warn

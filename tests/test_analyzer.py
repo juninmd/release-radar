@@ -22,6 +22,13 @@ def test_analysis_from_json_defaults_to_candidate_values() -> None:
     assert analysis.is_release_signal is True
 
 
+def test_non_boolean_signal_does_not_authorize_publication() -> None:
+    analysis = analysis_from_json(
+        make_candidate(), {"is_release_signal": "false", "release_status": "upcoming"}
+    )
+    assert not analysis.is_release_signal
+
+
 def test_fallback_identifies_release_words() -> None:
     analysis = fallback_analysis(make_candidate(), "")
     assert analysis.is_release_signal is True

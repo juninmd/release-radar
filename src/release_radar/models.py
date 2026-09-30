@@ -49,6 +49,8 @@ class ReleaseAnalysis:
     tags: list[str] = field(default_factory=list)
     hype: HypeSignals = field(default_factory=HypeSignals)
     raw: dict[str, Any] = field(default_factory=dict)
+    release_date: str = ""
+    release_status: str = "unknown"
 
     @property
     def summary(self) -> str:
