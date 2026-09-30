@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101921" />
+    <title>Release Radar · Filmes, séries, jogos e animes</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Release Radar, início"
+        ><span class="brand-mark" aria-hidden="true">◉</span> RELEASE<span
+          >RADAR</span
+        ></a
+      >
+      <span class="topbar-note">Seu guia para o que vem aí</span>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div class="intro-copy">
+          <p class="eyebrow">CULTURA POP / EM FOCO</p>
+          <h1 id="page-title">
+            As próximas histórias<br /><em>começam aqui.</em>
+          </h1>
+          <p class="lead">
+            Trailers, notícias e páginas oficiais de filmes, séries, jogos e
+            animes. Descubra o que vem aí e guarde os links para acompanhar.
+          </p>
+        </div>
+        <div class="radar-art" aria-hidden="true">
+          <div class="radar-ring r1"></div>
+          <div class="radar-ring r2"></div>
+          <div class="radar-ring r3"></div>
+          <span class="radar-center"></span><span class="radar-sweep"></span>
+        </div>
+      </section>
+      <section class="browse" aria-label="Explorar lançamentos">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">DESCUBRA</p>
+            <h2>Descobertas do radar</h2>
+          </div>
+          <p id="result-count" class="result-count" aria-live="polite">
+            Carregando…
+          </p>
+        </div>
+        <p class="browse-description">
+          Os links publicados pelo bot ficam salvos aqui. Veja o que ainda vai
+          estrear ou consulte os anteriores.
+        </p>
+        <div class="controls">
+          <div class="tabs" role="group" aria-label="Tipo de link">
+            <button
+              type="button"
+              class="tab active"
+              data-kind="all"
+              aria-pressed="true"
+            >
+              Todos</button
+            ><button
+              type="button"
+              class="tab"
+              data-kind="video"
+              aria-pressed="false"
+            >
+              ▶ YouTube</button
+            ><button
+              type="button"
+              class="tab"
+              data-kind="article"
+              aria-pressed="false"
+            >
+              ↗ Artigos</button
+            ><button
+              type="button"
+              class="tab"
+              data-kind="catalog"
+              aria-pressed="false"
+            >
+              ▣ Páginas oficiais
+            </button>
+          </div>
+          <label class="search"
+            ><span class="sr-only">Buscar lançamento</span
+            ><input
+              id="search"
+              type="search"
+              placeholder="Buscar título ou fonte…"
+              autocomplete="off"
+          /></label>
+        </div>
+        <div class="filter-row">
+          <label class="category-filter"
+            >Categoria
+            <select id="category">
+              <option value="all">Todas</option>
+              <option value="movies">Filmes</option>
+              <option value="series">Séries</option>
+              <option value="games">Jogos</option>
+              <option value="anime">Animes</option>
+            </select></label
+          >
+          <label class="category-filter"
+            >Disponibilidade<select id="availability">
+              <option value="all">Todas</option>
+              <option value="upcoming">Vai estrear</option>
+              <option value="released">Já disponível</option>
+              <option value="unconfirmed">A confirmar</option>
+            </select></label
+          >
+          <button id="reset-filters" class="text-button" type="button">
+            Limpar filtros
+          </button>
+          <div class="refresh-controls">
+            <span id="updated-at" class="updated-at"></span
+            ><button id="refresh" class="refresh-button" type="button">
+              Atualizar
+            </button>
+          </div>
+        </div>
+        <p class="source-guide">
+          YouTube: vídeos e trailers · Artigos: notícias · Páginas oficiais:
+          Steam e Kitsu
+        </p>
+        <div id="status" class="status" role="status">
+          <p id="status-text">Buscando novidades…</p>
+          <button id="retry" class="refresh-button" type="button" hidden>
+            Tentar novamente
+          </button>
+        </div>
+        <div id="cards" class="cards" aria-live="polite"></div>
+      </section>
+    </main>
+    <footer>
+      <span>RELEASE RADAR</span
+      ><span>Os 120 links mais recentes publicados pelo radar</span>
+    </footer>
+  </body>
+</html>

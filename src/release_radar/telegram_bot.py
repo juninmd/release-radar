@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+from html import escape as html_escape
 
 from telegram import Bot
 
 from .hype import hype_badge, hype_score
+from .links import link_kind
 from .models import ReleaseAnalysis, ReleaseCandidate
 
 logger = logging.getLogger(__name__)
@@ -66,10 +68,10 @@ def format_caption(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
     return "\n".join(
         [
             f"🚨 <b>{escape(analysis.title)}</b>",
-            f"🎭 {escape(analysis.category)} | {escape(candidate.channel)}",
+            f"🎭 {category_label(analysis.category)} | {escape(candidate.channel)}",
             escape(hype_badge(hype_score(analysis))),
             f"🗓 {escape(analysis.release_window)}",
-            f'▶️ <a href="{escape(candidate.url)}">Trailer/anuncio</a>',
+            f'{link_icon(candidate)} <a href="{escape(candidate.url)}">{link_label(candidate)}</a>',
         ]
     )
 
@@ -77,35 +79,45 @@ def format_caption(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
 def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> str:
     lines = [
         f"🚨 <b>{escape(analysis.title)}</b>",
-        f"🎭 Categoria: {escape(analysis.category)}",
+        f"🎭 Categoria: {category_label(analysis.category)}",
         f"📺 Fonte: {escape(candidate.channel)}",
-        f"🗓 Lancamento: {escape(analysis.release_window)}",
-        f"🎯 Confianca: {analysis.confidence:.0%}",
+        f"🗓 Estreia prevista: {escape(analysis.release_window)}",
+        f"🎯 Confiança na identificação: {analysis.confidence:.0%}",
         escape(hype_badge(hype_score(analysis))),
     ]
     if analysis.hype.rationale:
         lines.append(f"💡 {escape(analysis.hype.rationale)}")
     if analysis.platforms:
-        lines.append(f"🕹 Plataformas/onde ver: {escape(', '.join(analysis.platforms))}")
+        lines.append(f"🕹 Onde assistir ou jogar: {escape(', '.join(analysis.platforms))}")
     if analysis.genres:
-        lines.append(f"🏷 Generos: {escape(', '.join(analysis.genres))}")
+        lines.append(f"🏷 Gêneros: {escape(', '.join(analysis.genres))}")
     lines.extend(
         [
-            f'▶️ <a href="{escape(candidate.url)}">Abrir trailer/anuncio</a>',
+            f'{link_icon(candidate)} <a href="{escape(candidate.url)}">'
+            f"Abrir {link_label(candidate).lower()}</a>",
             "",
             "📝 <b>Sinopse</b>",
             escape(analysis.synopsis),
+        ]
+    )
+    if candidate.source == "youtube":
+        lines.extend(
+            [
+                "",
+                "🎬 <b>Leitura do trailer</b>",
+                escape(analysis.trailer_reading),
+                "",
+                "🗣 <b>Resumo transcrito</b>",
+                escape(analysis.transcript_summary or "Não há falas transcritas disponíveis."),
+            ]
+        )
+    lines.extend(
+        [
             "",
-            "🎬 <b>Leitura do trailer</b>",
-            escape(analysis.trailer_reading),
-            "",
-            "🗣 <b>Resumo transcrito</b>",
-            escape(analysis.transcript_summary or "Sem fala/transcricao util."),
-            "",
-            "🔥 <b>Por que importa</b>",
+            "🔥 <b>Por que acompanhar</b>",
             escape(analysis.why_it_matters),
             "",
-            "👥 <b>Publico</b>",
+            "👥 <b>Para quem é</b>",
             escape(analysis.audience),
         ]
     )
@@ -118,4 +130,22 @@ def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
 
 
 def escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return html_escape(text, quote=True)
+
+
+def link_label(candidate: ReleaseCandidate) -> str:
+    return {"video": "Vídeo no YouTube", "article": "Artigo", "catalog": "Página oficial"}[
+        link_kind(candidate.url, candidate.source)
+    ]
+
+
+def link_icon(candidate: ReleaseCandidate) -> str:
+    return {"video": "▶️", "article": "📰", "catalog": "🔗"}[
+        link_kind(candidate.url, candidate.source)
+    ]
+
+
+def category_label(category: str) -> str:
+    return {"movies": "Filmes", "series": "Séries", "games": "Jogos", "anime": "Animes"}.get(
+        category, "Outras novidades"
+    )

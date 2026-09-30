@@ -11,7 +11,7 @@ from .models import ReleaseAnalysis, ReleaseCandidate
 
 
 def get_connection(dsn: str) -> psycopg2.extensions.connection:
-    conn = psycopg2.connect(dsn)
+    conn = psycopg2.connect(dsn, connect_timeout=10)
     conn.autocommit = False
     return conn
 
@@ -160,7 +160,7 @@ def save_analysis(
             """,
             (
                 transcript,
-                Json(analysis.raw or analysis_to_json(analysis)),
+                Json(analysis_to_json(analysis)),
                 analysis.summary,
                 analysis.is_release_signal,
                 "analyzed" if analysis.is_release_signal else "skipped",
@@ -192,6 +192,21 @@ def mark_posted(conn: psycopg2.extensions.connection, external_id: str) -> None:
     conn.commit()
 
 
+def mark_skipped(conn: psycopg2.extensions.connection, external_id: str, reason: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE release_items SET status = 'skipped', skipped_reason = %s, "
+            "updated_at = NOW() WHERE external_id = %s",
+            (reason, external_id),
+        )
+        cur.execute(
+            "INSERT INTO release_events (external_id, event_type, detail) "
+            "VALUES (%s, 'release_skipped', %s)",
+            (external_id, Json({"reason": reason})),
+        )
+    conn.commit()
+
+
 def mark_failed(
     conn: psycopg2.extensions.connection,
     external_id: str,
@@ -215,4 +230,6 @@ def mark_failed(
 
 
 def analysis_to_json(analysis: ReleaseAnalysis) -> dict[str, Any]:
-    return json.loads(json.dumps(analysis.raw or asdict(analysis), default=str))
+    canonical = asdict(analysis)
+    canonical.pop("raw")
+    return json.loads(json.dumps({**analysis.raw, **canonical}, default=str))

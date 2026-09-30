@@ -1,52 +1,140 @@
 # Release Radar
 
-Radar privado de lancamentos de filmes, series, jogos e animes.
+Um radar privado para descobrir filmes, séries, jogos e animes que ainda vão
+estrear. O bot reúne anúncios de várias fontes, analisa o conteúdo e publica os
+links aprovados no Telegram. O painel web organiza essas publicações para você
+encontrar algo para assistir, ler ou acompanhar.
 
-Fluxo:
+## O que você encontra no painel
 
-1. Busca trailers e anuncios em canais YouTube configurados.
-2. Complementa com fontes sem API key: Steam (jogos "em breve"), Kitsu (animes anunciados) e feeds RSS oficiais/editoriais.
-3. Intercala as fontes por rodada para que nenhuma monopolize o `max_items_per_run`.
-4. Deduplica por `external_id`, URL e `content_hash` no PostgreSQL.
-5. Captura descricao, thumbnail, metadados e, quando viavel, transcreve audio do trailer via Whisper do cluster (so YouTube).
-6. Analisa titulo, descricao e transcricao via LiteLLM.
-7. Publica no Telegram com trailer, sinopse, janela de lancamento, plataformas, leitura do trailer e resumo transcrito.
+- **YouTube:** vídeos e trailers, incluindo links do YouTube encontrados em RSS.
+- **Artigos:** notícias e anúncios editoriais.
+- **Páginas oficiais:** páginas de jogos na Steam e de animes no Kitsu.
+- Busca por título ou fonte, sem exigir acentos, e filtros por categoria e disponibilidade.
+- Datas legíveis, detalhes completos e botões para assistir, ler ou abrir a página.
+- Atualização sem recarregar a página e nova tentativa quando a conexão falhar.
 
-## Fontes
+O painel mostra os **120 links mais recentes publicados pelo bot**. Os filtros
+atuam nessa seleção. Publicações anteriores continuam no histórico e podem
+aparecer como **Já disponível** quando a estreia passar; isso não gera uma nova
+mensagem no Telegram. **A confirmar** significa que uma publicação antiga não
+tem dados suficientes para determinar a disponibilidade atual.
 
-| Fonte | Categoria | Config | Observacao |
-|---|---|---|---|
-| YouTube | todas | `youtube_sources`, `source_limit` | unica fonte com transcricao de audio |
-| Steam | games | `steam_enabled`, `steam_limit`, `steam_country`, `steam_language` | busca `popularcomingsoon` + `appdetails`, sem key |
-| Kitsu | anime | `kitsu_enabled`, `kitsu_limit` | animes `upcoming` por audiencia, sem key |
-| RSS | por feed | `rss_sources` (`categoria\|url`), `rss_limit` | RSS 2.0, RDF e Atom via stdlib |
+As capturas de [desktop, celular e outros estados](docs/UI_PREVIEW.md) usam
+dados fictícios e mostram a interface real executada em Chromium.
 
-AniList e Jikan/MyAnimeList foram descartados: a API do AniList esta desativada (HTTP 403) e a do Jikan
-responde 504 desde o upstream. Ids do YouTube seguem crus no banco; as demais fontes usam prefixo
-(`steam:`, `kitsu:`, `rss:`), entao itens ja publicados nao sao repostados.
+## Como o bot decide o que publicar
 
-`init_db` migra bases antigas renomeando `youtube_id` para `external_id` e adicionando `source`.
-Rollback: `ALTER TABLE release_items RENAME COLUMN external_id TO youtube_id` (idem em `release_events`)
-e `ALTER TABLE release_items DROP COLUMN source`.
+1. Coleta links das fontes configuradas, alternando as fontes para que nenhuma monopolize a rodada.
+2. Evita repetir itens com o mesmo identificador, URL ou conteúdo já registrado no PostgreSQL.
+3. Enriquece os metadados e, quando habilitado, transcreve trailers do YouTube.
+4. Analisa se o link anuncia uma obra relevante que ainda vai estrear.
+5. Confere a data e a disponibilidade antes de publicar no Telegram.
 
-## Local
+Uma obra marcada como já lançada, ou com estreia hoje ou no passado, **não é
+publicada**. Para publicar, o bot exige uma data futura ou uma confirmação de
+que a obra ainda está por vir. Sem evidência, guarda o motivo
+`Estreia futura nao confirmada`. Apenas conter “trailer” no título não basta.
 
-```bash
-uv sync
-copy .env.example .env
-uv run release-radar run --dry-run --limit 3
-uv run pytest
-uv run ruff check src tests
+Datas explícitas vindas das fontes têm prioridade sobre a análise. Sem a chave
+da análise, Steam e Kitsu ainda fornecem a indicação de obra futura;
+YouTube e RSS precisam de evidência adicional. Essa regra reduz as postagens
+incertas, mas continua dependendo da qualidade dos metadados e da análise.
+
+> A deduplicação atual reconhece identificadores, URLs e conteúdo. Links
+> diferentes para a mesma obra ainda podem ser registrados separadamente.
+
+## Executar localmente
+
+Você precisa de Python 3.11+, [uv](https://docs.astral.sh/uv/) e PostgreSQL.
+Para transcrever áudio, também precisa de ffmpeg e de um serviço Whisper.
+
+```powershell
+uv sync --locked
+Copy-Item .env.example .env
 ```
 
-## Cluster
+Preencha o `.env` com a conexão `POSTGRES_*`. Para analisar links do YouTube e
+artigos, configure `LLM_BASE_URL`, `LLM_MODEL` e `LLM_API_KEY`. Para publicar,
+configure também `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`.
 
-Imagem: `ghcr.io/juninmd/release-radar:latest`
+Comece com um teste sem publicação:
 
-Servicos internos:
+```powershell
+uv run release-radar run --dry-run --limit 3
+```
 
-- Whisper: `http://whisper.ai.svc.cluster.local:9000`
-- LiteLLM: `http://litellm.ai.svc.cluster.local:4000/v1`
-- Postgres: secret gerenciado via ExternalSecret
+O teste a seco inicializa as tabelas, mas **não registra os itens, não salva
+análises e não envia mensagens**. Isso preserva a próxima rodada real.
+O resultado explica quantos links foram encontrados, analisados, rejeitados
+por já terem sido lançados ou retidos por falta de confirmação.
 
-Telegram usa o mesmo bot/chat do `nando-moura-analyzer` via propriedades SOPS compartilhadas.
+Para publicar uma rodada ou abrir o painel:
+
+```powershell
+uv run release-radar run --limit 12
+uv run release-radar web
+```
+
+Abra **http://127.0.0.1:8765**. O painel também inicializa as tabelas quando a
+base ainda estiver vazia. `--port 9000` troca a porta. Ele escuta apenas em
+localhost por padrão; para acesso remoto, configure autenticação no proxy
+antes de usar `--host 0.0.0.0`.
+
+Use `release-radar run --help` para ver os parâmetros ou `--json` para obter
+o resultado em JSON em uma automação.
+
+## Fontes e configuração
+
+| Fonte | Categoria | Configuração | Como funciona |
+|---|---|---|---|
+| YouTube | Todas | `YOUTUBE_SOURCES`, `SOURCE_LIMIT` | Canais configurados; única fonte com transcrição de áudio |
+| Steam | Jogos | `STEAM_ENABLED`, `STEAM_LIMIT`, `STEAM_COUNTRY`, `STEAM_LANGUAGE` | Jogos classificados pela loja como “em breve” |
+| Kitsu | Animes | `KITSU_ENABLED`, `KITSU_LIMIT` | Animes classificados como `upcoming` |
+| RSS | Por feed | `RSS_SOURCES`, `RSS_LIMIT` | RSS 2.0, RDF e Atom |
+
+Use `categoria|endereço` nas listas de fontes, separando entradas por vírgula.
+As categorias aceitas são `movies`, `series`, `games` e `anime`.
+Veja o [.env.example](.env.example) para os demais limites e serviços.
+
+O banco mantém os IDs antigos do YouTube e usa prefixos nas demais fontes:
+`steam:`, `kitsu:` e `rss:`. A inicialização migra bases antigas com a coluna
+`youtube_id` para `external_id` e adiciona `source`, preservando o histórico.
+
+## Testes e validação
+
+```powershell
+uv run ruff check .
+uv run pytest -q
+uv build
+```
+
+Para testar o navegador, instale o grupo opcional e o Chromium:
+
+```powershell
+uv sync --locked --group browser
+uv run --group browser playwright install chromium
+uv run --group browser pytest tests/test_frontend.py -q
+```
+
+Os testes de navegador usam dados fictícios e não acessam fontes nem Telegram.
+Defina `RELEASE_RADAR_SCREENSHOT_DIR` para guardar as capturas. Para usar um
+Chromium já instalado, defina `PLAYWRIGHT_CHROMIUM_EXECUTABLE` com seu caminho.
+
+Os testes de banco aceitam `RELEASE_RADAR_TEST_DSN` e criam um schema isolado
+por teste. Use uma base destinada a testes. Sem essa variável, tentam usar
+`pgserver` quando instalado; sem ambos, os testes de PostgreSQL são pulados.
+Sem o grupo `browser`, os testes de navegador também são pulados.
+
+A CI do PR executa lint, testes com PostgreSQL e Chromium, gera o pacote
+distribuível e guarda as capturas da UI como artefato.
+
+## Container e cluster
+
+A imagem existente é `ghcr.io/juninmd/release-radar:latest`. O comando padrão
+executa uma rodada do bot. Para servir o painel em outro processo/container,
+use `uv run release-radar web --host 0.0.0.0 --port 8765`, com as mesmas
+variáveis de conexão ao PostgreSQL.
+
+Os valores padrão dos serviços internos estão no [.env.example](.env.example).
+O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.

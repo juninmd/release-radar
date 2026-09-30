@@ -1,0 +1,74 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/api/releases"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    },
+    "body": {
+      "items": [
+        {
+          "id": "steam-demo",
+          "source": "steam",
+          "kind": "catalog",
+          "title": "A Última Cidade",
+          "url": "https://store.steampowered.com/app/123",
+          "channel": "Steam",
+          "category": "games",
+          "thumbnail": null,
+          "summary": "Sinopse fictícia usada na prévia do painel.",
+          "release_window": "desconhecido",
+          "release_date": "2026-11-20",
+          "availability": "upcoming",
+          "why_it_matters": "Exemplo sintético para validação visual.",
+          "platforms": [
+            "Demo"
+          ],
+          "posted_at": "2026-09-30T04:11:47.548963"
+        },
+        {
+          "id": "rss-demo",
+          "source": "rss",
+          "kind": "article",
+          "title": "Maré Alta: uma nova temporada",
+          "url": "https://example.test/article",
+          "channel": "Diário de estreias",
+          "category": "series",
+          "thumbnail": null,
+          "summary": "Sinopse fictícia usada na prévia do painel.",
+          "release_window": "desconhecido",
+          "release_date": "2026-11-20",
+          "availability": "upcoming",
+          "why_it_matters": "Exemplo sintético para validação visual.",
+          "platforms": [
+            "Demo"
+          ],
+          "posted_at": "2026-09-30T04:11:47.349848"
+        },
+        {
+          "id": "youtube-demo",
+          "source": "youtube",
+          "kind": "video",
+          "title": "Fronteira de Órion",
+          "url": "https://youtu.be/demo",
+          "channel": "Cinema em foco",
+          "category": "movies",
+          "thumbnail": null,
+          "summary": "Sinopse fictícia usada na prévia do painel.",
+          "release_window": "desconhecido",
+          "release_date": "2026-11-20",
+          "availability": "upcoming",
+          "why_it_matters": "Exemplo sintético para validação visual.",
+          "platforms": [
+            "Demo"
+          ],
+          "posted_at": "2026-09-30T04:11:47.093198"
+        }
+      ]
+    }
+  }
+}
