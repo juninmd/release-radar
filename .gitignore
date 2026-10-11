@@ -1,4 +1,6 @@
 .env
+.env.local
+.env.*.local
 .venv/
 __pycache__/
 .pytest_cache/
@@ -7,3 +9,10 @@ data/
 dist/
 artifacts/
 *.egg-info/
+
+# Environment and secrets
+*.key
+*.pem
+*.p12
+secrets/
+config/secrets.yml
