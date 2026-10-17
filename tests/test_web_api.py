@@ -214,3 +214,29 @@ def test_wrong_method_on_known_route_returns_json_405(api) -> None:
     response = httpx.post(f"{base}/api/settings", json={}, timeout=5, headers=headers)
     assert response.status_code == 405
     assert response.json()["error"]
+    # Verbos sem handler dedicado tambem respondem JSON, nao o HTML 501 do http.server.
+    deleted = httpx.request("DELETE", f"{base}/api/run", timeout=5, headers=headers)
+    assert deleted.status_code == 405
+    assert deleted.json()["error"]
+    assert httpx.post(f"{base}/api/health", json={}, timeout=5).status_code == 405
+
+
+def test_mutating_routes_require_json_content_type(api) -> None:
+    base, headers = api
+    # Uma pagina hostil consegue POST "simples" (text/plain): deve ser recusado.
+    response = httpx.post(
+        f"{base}/api/run",
+        content=b'{"dry_run": true}',
+        headers={**headers, "Content-Type": "text/plain"},
+        timeout=5,
+    )
+    assert response.status_code == 415
+
+
+def test_run_limit_respects_the_same_bounds(api) -> None:
+    base, headers = api
+    for value in (True, 3.9, 0, 10**6):
+        response = httpx.post(
+            f"{base}/api/run", json={"limit": value}, timeout=5, headers=headers
+        )
+        assert response.status_code == 400, value

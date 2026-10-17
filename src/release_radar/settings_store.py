@@ -7,14 +7,13 @@ analise e a conexao com o banco) nunca passam por este caminho.
 
 from __future__ import annotations
 
-import ipaddress
 from typing import Any
-from urllib.parse import urlsplit
 
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
 from .config import Settings
+from .net_guard import InternalTargetError, assert_public_url
 
 # kind: "int", "bool", "str" ou "feeds" (lista de URLs publicas). Somente estes
 # campos a API expoe.
@@ -46,7 +45,6 @@ INT_LIMITS: dict[str, tuple[int, int]] = {
 
 _TRUE = {"1", "true", "on", "yes", "sim"}
 _FALSE = {"0", "false", "off", "no", "nao", "não", ""}
-_BLOCKED_SUFFIXES = (".local", ".internal", ".localhost", ".cluster.local", ".svc")
 
 
 def coerce(field: str, value: Any) -> Any:
@@ -94,34 +92,11 @@ def _coerce_feeds(field: str, value: Any) -> str:
         if not entry:
             continue
         target = entry.split("|", 1)[1].strip() if "|" in entry else entry
-        _assert_public_url(field, target)
+        try:
+            assert_public_url(target)
+        except InternalTargetError as error:
+            raise ValueError(f"{field}: {error} ({target})") from error
     return text
-
-
-def _assert_public_url(field: str, target: str) -> None:
-    parsed = urlsplit(target)
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError(f"{field}: use uma URL http(s) por entrada")
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if not host or _is_internal_host(host):
-        raise ValueError(f"{field}: host interno nao permitido ({target})")
-
-
-def _is_internal_host(host: str) -> bool:
-    if host in {"localhost", "metadata.google.internal"} or host.endswith(_BLOCKED_SUFFIXES):
-        return True
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return (
-        address.is_private
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_reserved
-        or address.is_multicast
-        or address.is_unspecified
-    )
 
 
 def validate(values: dict[str, Any]) -> dict[str, Any]:

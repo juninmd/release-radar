@@ -39,8 +39,9 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Fora do Tauri (navegador) as chamadas GET caem para o proxy do Vite; as ações
- * que mudam estado continuam exigindo o app desktop.
+ * Fora do Tauri (navegador) as chamadas passam pelo proxy `/api` do Vite, então
+ * leitura e escrita funcionam em desenvolvimento; só o token guardado no Rust e
+ * as funções do sistema (bandeja, atalho, update) existem apenas no app.
  */
 export const api = {
   health(): Promise<Health> {
@@ -81,7 +82,10 @@ export const api = {
       return invoke<AppConfig>("save_config", { config, apiToken: apiToken ?? null });
     }
     saveBrowserConfig(config, apiToken);
-    return { ...config, hasToken: Boolean(apiToken) || config.hasToken };
+    return {
+      ...config,
+      hasToken: apiToken === undefined ? config.hasToken : Boolean(apiToken),
+    };
   },
   notify(title: string, body: string): Promise<void> {
     if (!isTauri()) return Promise.resolve();
@@ -133,7 +137,11 @@ function saveBrowserConfig(config: AppConfig, apiToken?: string): void {
   try {
     const { hasToken: _hasToken, activeShortcut: _active, ...rest } = config;
     localStorage.setItem(BROWSER_CONFIG_KEY, JSON.stringify(rest));
-    if (apiToken) localStorage.setItem("radar.apiToken", apiToken);
+    // undefined mantém o token atual; "" (explícito) remove.
+    if (apiToken !== undefined) {
+      if (apiToken) localStorage.setItem("radar.apiToken", apiToken);
+      else localStorage.removeItem("radar.apiToken");
+    }
   } catch {
     /* armazenamento indisponível: ignora em modo navegador */
   }

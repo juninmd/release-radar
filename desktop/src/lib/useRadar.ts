@@ -118,12 +118,20 @@ export function useRadar(): Radar {
       try {
         const started = await api.startRun(dryRun);
         setRun(started);
+        let last = started;
         // Acompanha por no máximo ~30 min e desiste, em vez de poll infinito.
         for (let attempt = 0; attempt < 900; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
-          const snapshot = await api.runStatus();
-          setRun(snapshot);
-          if (!snapshot.running) break;
+          last = await api.runStatus();
+          setRun(last);
+          if (!last.running) break;
+        }
+        if (last.running) {
+          setRun({
+            ...last,
+            running: false,
+            error: "A rodada continua no servidor; atualize em alguns minutos.",
+          });
         }
         await refresh();
       } catch (err) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { normalizeShortcut, prettyShortcut } from "../lib/format";
 import type { AppConfig, RunSnapshot, Skin } from "../lib/types";
@@ -29,6 +29,11 @@ export function SettingsPanel({ config, run, onClose, onSaveConfig, onStartRun }
   const [busy, setBusy] = useState(false);
 
   const update = (patch: Partial<AppConfig>) => setDraft({ ...draft, ...patch });
+
+  // Re-sincroniza quando o app salva (ex.: token removido), sem atrapalhar a digitação.
+  useEffect(() => {
+    setDraft(config);
+  }, [config]);
 
   async function save() {
     setBusy(true);
@@ -77,7 +82,7 @@ export function SettingsPanel({ config, run, onClose, onSaveConfig, onStartRun }
 
   const insecureBase =
     /^http:\/\//i.test(draft.apiBaseUrl.trim()) &&
-    !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?/i.test(draft.apiBaseUrl.trim());
+    !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/i.test(draft.apiBaseUrl.trim());
 
   return (
     <section className="overlay" aria-label="Ajustes">

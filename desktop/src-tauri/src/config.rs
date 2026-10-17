@@ -119,7 +119,14 @@ fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
         options.mode(0o600);
     }
     let mut file = options.open(path)?;
-    file.write_all(body.as_bytes())
+    file.write_all(body.as_bytes())?;
+    // `mode` só vale na criação: um arquivo antigo em 0644 seria mantido.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 fn public_from(stored: &StoredConfig) -> PublicConfig {

@@ -10,6 +10,7 @@ from xml.etree import ElementTree
 import httpx
 
 from ..models import ReleaseCandidate
+from ..net_guard import assert_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ _MAX_DESCRIPTION = 4000
 # do job (billion laughs). Feed legitimo nao declara DOCTYPE, entao recusamos.
 _MAX_FEED_BYTES = 8 * 1024 * 1024
 _DOCTYPE_SCAN_BYTES = 4096
+_MAX_REDIRECTS = 5
 
 
 def fetch_rss(
@@ -39,16 +41,34 @@ def fetch_rss(
 
 
 def _read_body(client: httpx.Client, feed_url: str) -> bytes:
-    """Le o feed abortando no limite: um corpo infinito nao pode ser bufferizado antes."""
+    """Le o feed abortando no limite: um corpo infinito nao pode ser bufferizado antes.
+
+    Redirecionamos a mao (o cliente nao segue) para revalidar cada salto: um feed
+    publico pode responder 302 apontando para a rede interna (metadados, servicos).
+    """
+    url = feed_url
+    for _ in range(_MAX_REDIRECTS + 1):
+        assert_public_url(url)
+        with client.stream("GET", url, follow_redirects=False) as response:
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise ValueError(f"Feed {url} redirecionou sem Location")
+                url = str(response.url.join(location))
+                continue
+            response.raise_for_status()
+            return _drain(response, url)
+    raise ValueError(f"Feed {feed_url} redirecionou demais")
+
+
+def _drain(response: httpx.Response, feed_url: str) -> bytes:
     chunks: list[bytes] = []
     size = 0
-    with client.stream("GET", feed_url) as response:
-        response.raise_for_status()
-        for chunk in response.iter_bytes():
-            size += len(chunk)
-            if size > _MAX_FEED_BYTES:
-                raise ValueError(f"Feed {feed_url} acima de {_MAX_FEED_BYTES} bytes")
-            chunks.append(chunk)
+    for chunk in response.iter_bytes():
+        size += len(chunk)
+        if size > _MAX_FEED_BYTES:
+            raise ValueError(f"Feed {feed_url} acima de {_MAX_FEED_BYTES} bytes")
+        chunks.append(chunk)
     body = b"".join(chunks)
     if _DOCTYPE_RE.search(body[:_DOCTYPE_SCAN_BYTES]):
         raise ValueError(f"Feed {feed_url} declara DOCTYPE; recusado")

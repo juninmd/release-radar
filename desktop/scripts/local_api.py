@@ -164,7 +164,9 @@ def main() -> None:
     server_pg = pgserver.get_server(data_dir)
     created = seed(server_pg.get_uri())
 
-    httpd = create_server(server_pg.get_uri(), host="127.0.0.1", port=PORT)
+    httpd = create_server(
+        server_pg.get_uri(), host="127.0.0.1", port=PORT, allow_anonymous_writes=True
+    )
     print(f"{created} itens fictícios criados", flush=True)
     print(f"API de demonstração pronta em http://127.0.0.1:{PORT}", flush=True)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)

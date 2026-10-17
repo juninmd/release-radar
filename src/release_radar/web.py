@@ -17,6 +17,7 @@ from .jobs import RunJob
 from .links import link_kind
 from .release_policy import release_state
 from .settings_store import (
+    coerce,
     effective_settings,
     public_settings,
     read_overrides,
@@ -31,6 +32,12 @@ FILES = {
 }
 MAX_BODY_BYTES = 64 * 1024
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+ROUTES: dict[str, set[str]] = {
+    "/api/health": {"GET"},
+    "/api/releases": {"GET"},
+    "/api/run": {"GET", "POST"},
+    "/api/settings": {"GET", "PUT"},
+}
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +110,7 @@ def create_server(
     port: int = 8765,
     settings: Settings | None = None,
     token: str = "",
-    allow_anonymous_writes: bool = True,
+    allow_anonymous_writes: bool = False,
 ) -> ThreadingHTTPServer:
     base_settings = settings or get_settings()
     job = RunJob()
@@ -120,27 +127,36 @@ def create_server(
         def do_PUT(self) -> None:
             self._dispatch("PUT")
 
+        def do_DELETE(self) -> None:
+            self._dispatch("DELETE")
+
+        def do_PATCH(self) -> None:
+            self._dispatch("PATCH")
+
+        def do_HEAD(self) -> None:
+            self._dispatch("HEAD")
+
+        def do_OPTIONS(self) -> None:
+            self._dispatch("OPTIONS")
+
         def _dispatch(self, method: str) -> None:
             path = urlsplit(self.path).path
             try:
-                if path == "/api/health":
-                    self._json(200, {"status": "ok", "service": "release-radar"})
-                elif path == "/api/releases" and method == "GET":
-                    self._json(200, {"items": self._releases()})
-                elif path == "/api/run" and method == "POST":
-                    self._require_token()
-                    self._start_run()
-                elif path == "/api/run" and method == "GET":
-                    self._require_token()
-                    self._json(200, job.snapshot())
-                elif path == "/api/settings" and method == "GET":
-                    self._require_token()
-                    self._json(200, public_settings(base_settings, load_overrides(dsn)))
-                elif path == "/api/settings" and method == "PUT":
-                    self._require_token()
-                    self._update_settings()
-                elif path in {"/api/run", "/api/settings", "/api/releases"}:
-                    self._json(405, {"error": "Metodo nao permitido para esta rota."})
+                if path in ROUTES:
+                    if method not in ROUTES[path]:
+                        self._json(405, {"error": "Metodo nao permitido para esta rota."})
+                    elif path == "/api/health":
+                        self._json(200, {"status": "ok", "service": "release-radar"})
+                    elif path == "/api/releases":
+                        self._json(200, {"items": self._releases()})
+                    elif path == "/api/run":
+                        self._require_token()
+                        self._start_run() if method == "POST" else self._json(200, job.snapshot())
+                    else:
+                        self._require_token()
+                        self._update_settings() if method == "PUT" else self._json(
+                            200, public_settings(base_settings, load_overrides(dsn))
+                        )
                 elif method == "GET" and path in FILES:
                     self._send_file(path)
                 else:
@@ -188,6 +204,10 @@ def create_server(
                 raise ApiError(400, "Corpo JSON ausente.")
             if length > MAX_BODY_BYTES:
                 raise ApiError(413, "Corpo grande demais.")
+            # Exigir JSON derruba requisicoes "simples" de pagina hostil (CSRF):
+            # application/json obriga preflight, que nao respondemos.
+            if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
+                raise ApiError(415, "Envie Content-Type: application/json.")
             raw = self.rfile.read(length)
             data = json.loads(raw)
             if not isinstance(data, dict):
@@ -204,11 +224,9 @@ def create_server(
             limit: int | None = None
             if raw_limit is not None:
                 try:
-                    limit = int(raw_limit)
-                except (TypeError, ValueError) as exc:
-                    raise ApiError(400, "limit deve ser um numero inteiro") from exc
-                if limit <= 0:
-                    raise ApiError(400, "limit deve ser maior que zero")
+                    limit = coerce("max_items_per_run", raw_limit)
+                except ValueError as error:
+                    raise ApiError(400, f"limit invalido: {error}") from error
             run_settings = effective_settings(base_settings, load_overrides(dsn))
             if not job.start(run_settings, dry_run=dry_run, limit=limit, dsn=dsn):
                 payload = {"accepted": False, **job.snapshot()}
@@ -273,10 +291,10 @@ def serve(dsn: str, host: str = "127.0.0.1", port: int = 8765) -> None:
     server = create_server(dsn, host, port, settings, token, allow_anonymous_writes=allow_anonymous)
     print(f"Painel do Release Radar: http://{host}:{server.server_port}")
     print("Use Ctrl+C para encerrar. O painel mostra os links publicados pelo bot.")
-    if not token and not local:
+    if not token and not local and not allow_anonymous:
         logger.warning(
             "RELEASE_RADAR_API_TOKEN vazio em %s: /api/run e /api/settings respondem 403. "
-            "Defina o token (no .env ou no ambiente) ou RELEASE_RADAR_ALLOW_ANON=1 para liberar.",
+            "Defina o token ou RELEASE_RADAR_ALLOW_ANON=true para liberar.",
             host,
         )
     try:

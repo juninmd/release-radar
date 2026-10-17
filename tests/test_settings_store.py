@@ -66,6 +66,10 @@ def test_coerce_bounds_the_expensive_limits() -> None:
         "games|https://service.svc.cluster.local/feed",
         "games|ftp://example.test/feed",
         "games|example.test/feed",
+        "games|http://127.1/feed",
+        "games|http://2130706433/feed",
+        "games|http://0x7f000001/feed",
+        "games|http://[::ffff:127.0.0.1]/feed",
     ],
 )
 def test_coerce_rejects_internal_or_non_http_feeds(value: str) -> None:

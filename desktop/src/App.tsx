@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertsScreen } from "./components/AlertsScreen";
 import { EmptyState } from "./components/EmptyState";
 import { Filters } from "./components/Filters";
@@ -15,6 +15,10 @@ type View = "list" | "settings" | "alerts";
 export default function App() {
   const radar = useRadar();
   const [view, setView] = useState<View>("list");
+  // Espelho da vista atual: o efeito das novidades não deve reabrir o overlay
+  // quando o usuário fecha, nem tirá-lo de Ajustes.
+  const viewRef = useRef<View>("list");
+  viewRef.current = view;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -25,8 +29,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Só abre quando chega um conjunto novo de novidades; fechar (✕/Esc) não reabre.
-    if (radar.fresh.length > 0) setView("alerts");
+    // Só abre com um conjunto novo de novidades; fechar (✕/Esc) não reabre e
+    // Ajustes não é interrompido.
+    if (radar.fresh.length > 0 && viewRef.current !== "settings") setView("alerts");
   }, [radar.fresh]);
 
   useEffect(() => {
