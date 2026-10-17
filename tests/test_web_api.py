@@ -231,6 +231,14 @@ def test_mutating_routes_require_json_content_type(api) -> None:
         timeout=5,
     )
     assert response.status_code == 415
+    # Sem corpo tambem: o POST vazio (form/no-cors) nao dispara rodada alguma.
+    empty = httpx.post(
+        f"{base}/api/run",
+        headers={**headers, "Content-Type": "application/x-www-form-urlencoded"},
+        timeout=5,
+    )
+    assert empty.status_code == 415
+    assert httpx.post(f"{base}/api/run", headers=headers, timeout=5).status_code == 415
 
 
 def test_run_limit_respects_the_same_bounds(api) -> None:

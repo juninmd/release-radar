@@ -24,13 +24,18 @@ def normalize_host(value: str) -> str:
 
 
 def is_internal_address(address: str) -> bool:
-    """Só aceita um IP literal; hostname levanta ValueError para o chamador decidir."""
+    """Só aceita um IP literal; hostname levanta ValueError para o chamador decidir.
+
+    `not is_global` cobre rede privada, loopback, link-local, reservado, multicast,
+    nao especificado e o CGNAT 100.64.0.0/10 (faixa do Tailscale e de alguns
+    clusters), que `is_private` sozinho deixaria passar.
+    """
     parsed = ipaddress.ip_address(address)
     return (
-        parsed.is_private
+        not parsed.is_global
+        or parsed.is_private
         or parsed.is_loopback
         or parsed.is_link_local
-        or parsed.is_reserved
         or parsed.is_multicast
         or parsed.is_unspecified
     )

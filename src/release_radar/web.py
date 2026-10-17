@@ -193,6 +193,14 @@ def create_server(
                 "Escrita desabilitada: defina RELEASE_RADAR_API_TOKEN para expor o painel.",
             )
 
+        def _require_json_content_type(self) -> None:
+            """Exigir JSON derruba o POST "simples" que uma pagina hostil dispararia.
+
+            Vale mesmo sem corpo: um POST vazio (form/no-cors) nao tem preflight.
+            """
+            if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
+                raise ApiError(415, "Envie Content-Type: application/json.")
+
         def _read_json(self, optional: bool = False) -> dict[str, Any]:
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -204,10 +212,6 @@ def create_server(
                 raise ApiError(400, "Corpo JSON ausente.")
             if length > MAX_BODY_BYTES:
                 raise ApiError(413, "Corpo grande demais.")
-            # Exigir JSON derruba requisicoes "simples" de pagina hostil (CSRF):
-            # application/json obriga preflight, que nao respondemos.
-            if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
-                raise ApiError(415, "Envie Content-Type: application/json.")
             raw = self.rfile.read(length)
             data = json.loads(raw)
             if not isinstance(data, dict):
@@ -215,6 +219,7 @@ def create_server(
             return data
 
         def _start_run(self) -> None:
+            self._require_json_content_type()
             body = self._read_json(optional=True)
             raw_dry_run = body.get("dry_run", False)
             if not isinstance(raw_dry_run, bool):
@@ -235,6 +240,7 @@ def create_server(
             self._json(202, {"accepted": True, **job.snapshot()})
 
         def _update_settings(self) -> None:
+            self._require_json_content_type()
             body = self._read_json()
             conn = get_connection(dsn)
             try:

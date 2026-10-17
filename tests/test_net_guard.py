@@ -25,6 +25,9 @@ from release_radar.sources.rss import _read_body
         "0x7f000001",
         "0177.0.0.1",
         "::ffff:127.0.0.1",
+        "100.64.0.1",
+        "198.18.0.1",
+        "192.0.0.1",
     ],
 )
 def test_internal_hosts_are_blocked(host: str) -> None:
