@@ -67,6 +67,7 @@ async def run_pipeline(
         settings = effective_settings(settings, read_overrides(conn))
     except Exception:
         logger.exception("Failed to load settings overrides; using environment values")
+        conn.rollback()
     publisher = TelegramPublisher(settings.telegram_bot_token, settings.telegram_chat_id)
     stats = RunStats()
     max_items = limit or settings.max_items_per_run

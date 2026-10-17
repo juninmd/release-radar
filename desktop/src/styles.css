@@ -1074,6 +1074,17 @@ body {
   color: var(--danger);
 }
 
+.settings-warn {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 9px;
+}
+
 .run-stats {
   list-style: none;
   margin: 0;

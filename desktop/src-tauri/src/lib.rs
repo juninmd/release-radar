@@ -39,6 +39,13 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|window, event| {
+            // O widget vive na bandeja: fechar esconde em vez de encerrar.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .on_page_load(|webview, _payload| {
             if webview.label() != "main" || FIRST_SHOW.swap(true, Ordering::SeqCst) {
                 return;

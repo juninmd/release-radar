@@ -38,6 +38,23 @@ def api(postgres_dsn: str) -> Iterator[tuple[str, dict]]:
         server.server_close()
 
 
+@pytest.fixture
+def open_api(postgres_dsn: str) -> Iterator[str]:
+    """Sem token e sem permissão explícita: escrita deve ser recusada."""
+    init_db(postgres_dsn)
+    server = create_server(
+        postgres_dsn, port=0, settings=Settings(_env_file=None), allow_anonymous_writes=False
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_health_and_releases_stay_open_when_a_token_is_configured(api) -> None:
     base, _ = api
     assert httpx.get(f"{base}/api/health", timeout=5).json()["status"] == "ok"
@@ -112,3 +129,88 @@ def test_run_endpoint_rejects_invalid_limit(api) -> None:
         f"{base}/api/run", json={"limit": 0}, timeout=5, headers=headers
     )
     assert response.status_code == 400
+
+
+def test_write_routes_are_refused_when_exposed_without_a_token(open_api: str) -> None:
+    assert httpx.get(f"{open_api}/api/releases", timeout=5).status_code == 200
+    assert httpx.get(f"{open_api}/api/health", timeout=5).status_code == 200
+    blocked = httpx.get(f"{open_api}/api/settings", timeout=5)
+    assert blocked.status_code == 403
+    assert httpx.post(f"{open_api}/api/run", json={}, timeout=5).status_code == 403
+    assert httpx.put(f"{open_api}/api/settings", json={}, timeout=5).status_code == 403
+
+
+def test_bearer_scheme_is_case_insensitive(api) -> None:
+    base, _ = api
+    response = httpx.get(
+        f"{base}/api/settings", timeout=5, headers={"Authorization": f"bearer {TOKEN}"}
+    )
+    assert response.status_code == 200
+
+
+def test_dry_run_requires_a_real_boolean(api) -> None:
+    base, headers = api
+    for value in ("false", 0, None, 1):
+        response = httpx.post(
+            f"{base}/api/run", json={"dry_run": value}, timeout=5, headers=headers
+        )
+        assert response.status_code == 400, value
+
+
+def test_settings_bound_the_risky_numbers(api) -> None:
+    base, headers = api
+    for payload in (
+        {"max_items_per_run": 10**9},
+        {"max_items_per_run": 0},
+        {"max_transcription_seconds": 10**9},
+        {"rss_limit": True},
+        {"rss_limit": 3.9},
+        {"rss_limit": "muitos"},
+    ):
+        response = httpx.put(f"{base}/api/settings", json=payload, timeout=5, headers=headers)
+        assert response.status_code == 400, payload
+
+
+def test_settings_reject_internal_feed_hosts(api) -> None:
+    base, headers = api
+    for value in (
+        "games|http://169.254.169.254/latest/meta-data/",
+        "games|http://127.0.0.1:8000/feed",
+        "games|http://litellm.ai.svc.cluster.local:4000/feed",
+        "games|ftp://example.test/feed",
+        "games|example.test/feed",
+    ):
+        response = httpx.put(
+            f"{base}/api/settings", json={"rss_sources": value}, timeout=5, headers=headers
+        )
+        assert response.status_code == 400, value
+
+    ok = httpx.put(
+        f"{base}/api/settings",
+        json={"rss_sources": "games|https://blog.playstation.com/feed/"},
+        timeout=5,
+        headers=headers,
+    )
+    assert ok.status_code == 200
+
+
+def test_settings_are_atomic_when_one_field_is_invalid(api) -> None:
+    base, headers = api
+    before = httpx.get(f"{base}/api/settings", timeout=5, headers=headers).json()["values"]
+    response = httpx.put(
+        f"{base}/api/settings",
+        json={"rss_limit": before["rss_limit"] + 1, "postgres_password": "vazou"},
+        timeout=5,
+        headers=headers,
+    )
+    assert response.status_code == 400
+    after = httpx.get(f"{base}/api/settings", timeout=5, headers=headers).json()
+    assert after["values"]["rss_limit"] == before["rss_limit"]
+    assert "rss_limit" not in after["overridden"]
+
+
+def test_wrong_method_on_known_route_returns_json_405(api) -> None:
+    base, headers = api
+    response = httpx.post(f"{base}/api/settings", json={}, timeout=5, headers=headers)
+    assert response.status_code == 405
+    assert response.json()["error"]

@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -58,7 +59,12 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn load(app: &AppHandle) -> Self {
-        let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Sem diretório de config, usa a pasta temporária — nunca o diretório atual,
+        // onde o token poderia acabar dentro de um repositório.
+        let dir = app
+            .path()
+            .app_config_dir()
+            .unwrap_or_else(|_| std::env::temp_dir().join("release-radar"));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("config.json");
         let stored = fs::read_to_string(&path)
@@ -99,8 +105,21 @@ impl ConfigStore {
     fn persist(&self, stored: &StoredConfig) -> Result<(), String> {
         let body = serde_json::to_string_pretty(stored)
             .map_err(|error| format!("Não foi possível serializar os ajustes: {error}"))?;
-        fs::write(&self.path, body).map_err(|error| format!("Não foi possível gravar os ajustes: {error}"))
+        write_private(&self.path, &body).map_err(|error| format!("Não foi possível gravar os ajustes: {error}"))
     }
+}
+
+/// O arquivo guarda o token: no Unix nasce 0600, longe de outros usuários.
+fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(body.as_bytes())
 }
 
 fn public_from(stored: &StoredConfig) -> PublicConfig {

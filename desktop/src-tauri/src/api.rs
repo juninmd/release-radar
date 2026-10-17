@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::Method;
 use serde_json::{json, Value};
 use tauri::State;
@@ -11,9 +13,13 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
+        // Sem timeout, uma API travada deixaria a UI em "carregando" para sempre.
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self { client }
     }
 }
 

@@ -38,6 +38,47 @@ def test_coerce_rejects_unknown_boolean_and_negative_integers() -> None:
         coerce("rss_limit", "muitos")
 
 
+def test_coerce_rejects_booleans_and_floats_for_numbers() -> None:
+    with pytest.raises(ValueError):
+        coerce("rss_limit", True)
+    with pytest.raises(ValueError):
+        coerce("rss_limit", 3.9)
+
+
+def test_coerce_bounds_the_expensive_limits() -> None:
+    for value in (0, 10**9):
+        with pytest.raises(ValueError):
+            coerce("max_items_per_run", value)
+    with pytest.raises(ValueError):
+        coerce("rss_limit", 51)
+    with pytest.raises(ValueError):
+        coerce("max_transcription_seconds", 10**9)
+    assert coerce("max_items_per_run", 25) == 25
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "games|http://169.254.169.254/x",
+        "games|http://10.0.0.5/feed",
+        "games|http://localhost/feed",
+        "games|http://db.internal/feed",
+        "games|https://service.svc.cluster.local/feed",
+        "games|ftp://example.test/feed",
+        "games|example.test/feed",
+    ],
+)
+def test_coerce_rejects_internal_or_non_http_feeds(value: str) -> None:
+    with pytest.raises(ValueError):
+        coerce("rss_sources", value)
+
+
+def test_coerce_accepts_public_feeds_and_empty_list() -> None:
+    assert coerce("rss_sources", "games|https://blog.playstation.com/feed/").startswith("games|")
+    assert coerce("rss_sources", "  ") == ""
+    assert coerce("youtube_sources", "games|@PlayStation") == "games|@PlayStation"
+
+
 def test_validate_rejects_unknown_fields() -> None:
     with pytest.raises(ValueError, match="desconhecidos"):
         validate({"youtube_sources": "", "telegram_bot_token": "vazou"})

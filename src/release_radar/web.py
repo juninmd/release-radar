@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
-import os
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,6 +30,7 @@ FILES = {
     "/app.js": ("app.js", "text/javascript"),
 }
 MAX_BODY_BYTES = 64 * 1024
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 logger = logging.getLogger(__name__)
 
 
@@ -102,6 +103,7 @@ def create_server(
     port: int = 8765,
     settings: Settings | None = None,
     token: str = "",
+    allow_anonymous_writes: bool = True,
 ) -> ThreadingHTTPServer:
     base_settings = settings or get_settings()
     job = RunJob()
@@ -137,13 +139,17 @@ def create_server(
                 elif path == "/api/settings" and method == "PUT":
                     self._require_token()
                     self._update_settings()
+                elif path in {"/api/run", "/api/settings", "/api/releases"}:
+                    self._json(405, {"error": "Metodo nao permitido para esta rota."})
                 elif method == "GET" and path in FILES:
                     self._send_file(path)
                 else:
                     self._error(404)
             except ApiError as err:
                 self._json(err.status, {"error": err.message})
-            except (json.JSONDecodeError, ValueError) as err:
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._json(400, {"error": "Corpo JSON invalido."})
+            except ValueError as err:
                 self._json(400, {"error": str(err) or "Corpo invalido."})
             except Exception:
                 logger.exception("Failed to handle %s %s", method, path)
@@ -157,12 +163,19 @@ def create_server(
                 raise ApiError(503, "Nao foi possivel carregar os lancamentos.") from None
 
         def _require_token(self) -> None:
-            if not token:
+            if token:
+                scheme, _, value = self.headers.get("Authorization", "").partition(" ")
+                if scheme.lower() != "bearer" or not hmac.compare_digest(
+                    value.strip().encode(), token.encode()
+                ):
+                    raise ApiError(401, "Nao autorizado.")
                 return
-            header = self.headers.get("Authorization", "")
-            expected = f"Bearer {token}"
-            if header != expected:
-                raise ApiError(401, "Nao autorizado.")
+            if allow_anonymous_writes:
+                return
+            raise ApiError(
+                403,
+                "Escrita desabilitada: defina RELEASE_RADAR_API_TOKEN para expor o painel.",
+            )
 
         def _read_json(self, optional: bool = False) -> dict[str, Any]:
             try:
@@ -183,7 +196,10 @@ def create_server(
 
         def _start_run(self) -> None:
             body = self._read_json(optional=True)
-            dry_run = bool(body.get("dry_run", False))
+            raw_dry_run = body.get("dry_run", False)
+            if not isinstance(raw_dry_run, bool):
+                raise ApiError(400, "dry_run deve ser verdadeiro ou falso.")
+            dry_run = raw_dry_run
             raw_limit = body.get("limit")
             limit: int | None = None
             if raw_limit is not None:
@@ -244,20 +260,23 @@ def create_server(
             self.wfile.write(body)
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-            logger.debug("%s - %s", self.address_string(), format % args)
+            logger.info("%s - %s", self.address_string(), format % args)
 
     return ThreadingHTTPServer((host, port), Handler)
 
 
 def serve(dsn: str, host: str = "127.0.0.1", port: int = 8765) -> None:
-    token = os.environ.get("RELEASE_RADAR_API_TOKEN", "").strip()
-    server = create_server(dsn, host, port, get_settings(), token)
+    settings = get_settings()
+    token = settings.release_radar_api_token.strip()
+    local = host.strip().lower() in LOCAL_HOSTS
+    allow_anonymous = local or settings.release_radar_allow_anon
+    server = create_server(dsn, host, port, settings, token, allow_anonymous_writes=allow_anonymous)
     print(f"Painel do Release Radar: http://{host}:{server.server_port}")
     print("Use Ctrl+C para encerrar. O painel mostra os links publicados pelo bot.")
-    if not token and host not in {"127.0.0.1", "localhost"}:
+    if not token and not local:
         logger.warning(
-            "RELEASE_RADAR_API_TOKEN vazio: /api/run e /api/settings ficam abertos "
-            "para quem alcancar %s. Defina o token antes de expor o painel.",
+            "RELEASE_RADAR_API_TOKEN vazio em %s: /api/run e /api/settings respondem 403. "
+            "Defina o token (no .env ou no ambiente) ou RELEASE_RADAR_ALLOW_ANON=1 para liberar.",
             host,
         )
     try:

@@ -60,6 +60,25 @@ export function SettingsPanel({ config, run, onClose, onSaveConfig, onStartRun }
     }
   }
 
+  async function removeToken() {
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await onSaveConfig({ ...draft, hasToken: false }, "");
+      setToken("");
+      setStatus("Token removido.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao remover o token.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const insecureBase =
+    /^http:\/\//i.test(draft.apiBaseUrl.trim()) &&
+    !/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?/i.test(draft.apiBaseUrl.trim());
+
   return (
     <section className="overlay" aria-label="Ajustes">
       <header className="overlay-head">
@@ -105,6 +124,18 @@ export function SettingsPanel({ config, run, onClose, onSaveConfig, onStartRun }
                 onChange={(event) => setToken(event.target.value)}
               />
             </label>
+            {draft.hasToken ? (
+              <div className="settings-actions">
+                <button type="button" className="text-button" onClick={() => void removeToken()} disabled={busy}>
+                  Remover token guardado
+                </button>
+              </div>
+            ) : null}
+            {insecureBase ? (
+              <p className="settings-warn">
+                Endereço em http:// fora de localhost: o token viajaria sem TLS até a API.
+              </p>
+            ) : null}
             <label className="field">
               <span>Buscar novidades a cada (min)</span>
               <input

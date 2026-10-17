@@ -25,8 +25,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (radar.fresh.length > 0 && view === "list") setView("alerts");
-  }, [radar.fresh, view]);
+    // Só abre quando chega um conjunto novo de novidades; fechar (✕/Esc) não reabre.
+    if (radar.fresh.length > 0) setView("alerts");
+  }, [radar.fresh]);
 
   useEffect(() => {
     if (!isTauri()) return;

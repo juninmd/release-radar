@@ -11,9 +11,8 @@ describe("detectNew", () => {
     expect(detectNew(["a", "b"], ids(["b", "c", "d"])).map((i) => i.id)).toEqual(["c", "d"]);
   });
 
-  test("sem vistos, a primeira carga não conta como novidade", () => {
-    // A primeira carga é tratada à parte pelo hook; aqui a lista vazia marca tudo.
-    expect(detectNew([], ids(["a"]))).toHaveLength(1);
+  test("com a lista vazia marca tudo como novo (o hook ignora isso na primeira carga)", () => {
+    expect(detectNew([], ids(["a", "b"])).map((i) => i.id)).toEqual(["a", "b"]);
   });
 });
 

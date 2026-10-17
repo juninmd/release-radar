@@ -27,14 +27,16 @@ dados fictícios e mostram a interface real executada em Chromium.
 
 Há também um app de desktop em [`desktop/`](desktop/README.md) (Tauri v2 +
 React): uma janela compacta sempre no topo, com ícone na bandeja, notificações de
-novidades, atalho global `Ctrl+Alt+R`, skins e atualização assinada. Ele **consome
-a API publicada** pelo painel — não fala com o PostgreSQL nem com o Telegram — e
-permite disparar uma rodada do bot e ajustar fontes e limites pela própria
-interface. O painel web continua igual.
+novidades, atalho global `Ctrl+Shift+R`, skins e atualização assinada. Ele
+**consome a API publicada** pelo painel — não fala com o PostgreSQL nem com o
+Telegram — e permite disparar uma rodada do bot e ajustar fontes e limites pela
+própria interface. O painel web continua igual.
 
-Para servir essa API em rede, proteja as rotas de escrita com
-`RELEASE_RADAR_API_TOKEN` e suba o painel com `--host 0.0.0.0` (veja
-[.env.example](.env.example) e [desktop/README.md](desktop/README.md)).
+Para servir essa API em rede, defina `RELEASE_RADAR_API_TOKEN` e suba o painel
+com `--host 0.0.0.0` (veja [.env.example](.env.example) e
+[desktop/README.md](desktop/README.md)). Sem o token, uma exposição fora de
+`localhost` passa a recusar `/api/run` e `/api/settings` com 403 até que você
+defina o token ou `RELEASE_RADAR_ALLOW_ANON=true`.
 
 ## Como o bot decide o que publicar
 
@@ -153,8 +155,10 @@ O painel expõe: `GET /api/releases` (os links publicados, aberto),
 `GET /api/health`, `POST`/`GET /api/run` (dispara e acompanha uma rodada) e
 `GET`/`PUT /api/settings` (fontes e limites). Com `RELEASE_RADAR_API_TOKEN`
 definido, tudo menos `/api/releases` e `/api/health` exige
-`Authorization: Bearer <token>`. Os ajustes salvos ficam na tabela
-`radar_settings` e sobrescrevem apenas as fontes e limites permitidos.
+`Authorization: Bearer <token>`; sem o token, fora de `localhost` essas rotas de
+escrita respondem 403 (use `RELEASE_RADAR_ALLOW_ANON=true` para liberar). Os
+ajustes salvos ficam na tabela `radar_settings` e sobrescrevem apenas as fontes e
+limites permitidos.
 
 Os valores padrão dos serviços internos estão no [.env.example](.env.example).
 O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.

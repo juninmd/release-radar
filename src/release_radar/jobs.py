@@ -71,10 +71,10 @@ class RunJob:
             stats = run_sync(settings, limit=limit, dry_run=dry_run, dsn=dsn)
             with self._lock:
                 self._state["stats"] = asdict(stats)
-        except Exception as exc:  # noqa: BLE001 - a API devolve a mensagem ao painel
+        except Exception:  # noqa: BLE001 - a API devolve uma mensagem generica
             logger.exception("Run job failed")
             with self._lock:
-                self._state["error"] = str(exc)
+                self._state["error"] = "A rodada falhou. Veja os logs do painel."
         finally:
             with self._lock:
                 self._state["running"] = False

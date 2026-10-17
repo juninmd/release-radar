@@ -77,8 +77,8 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings &
 ```
 
 Para testar a interface no navegador, sem o Tauri, aponte `VITE_API_BASE` para a
-API e rode `bun run dev` — o Vite cria um proxy `/api` e as chamadas de leitura
-funcionam (as ações de escrita, como disparar a rodada, exigem o app instalado).
+API e rode `bun run dev` — o Vite cria um proxy `/api`, então leitura **e
+escrita** (inclusive disparar a rodada) funcionam enquanto o proxy estiver de pé.
 
 Duas observações de plataforma, medidas no Windows:
 

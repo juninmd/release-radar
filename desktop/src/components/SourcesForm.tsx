@@ -27,6 +27,7 @@ const TOGGLES = [
 
 export function SourcesForm() {
   const [values, setValues] = useState<Record<string, FieldValue> | null>(null);
+  const [initial, setInitial] = useState<Record<string, FieldValue> | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,10 @@ export function SourcesForm() {
   useEffect(() => {
     void api
       .readSettings()
-      .then((payload) => setValues(payload.values))
+      .then((payload) => {
+        setValues(payload.values);
+        setInitial(payload.values);
+      })
       .catch((err: Error) => setError(err.message));
   }, []);
 
@@ -44,12 +48,21 @@ export function SourcesForm() {
 
   async function save() {
     if (!values) return;
+    // Envia só o que mudou: o resto continua vindo do .env.
+    const changed = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => initial?.[key] !== value),
+    );
+    if (Object.keys(changed).length === 0) {
+      setMessage("Nada para salvar: os valores já são os atuais.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const payload = await api.writeSettings(values);
+      const payload = await api.writeSettings(changed);
       setValues(payload.values);
+      setInitial(payload.values);
       setSaved(payload.overridden);
       setMessage("Ajustes salvos. A próxima rodada já usa estes valores.");
     } catch (err) {

@@ -46,7 +46,7 @@ export function Header({ online, freshCount, pinned, onBell, onTogglePin, onHide
         <button type="button" className="icon-button" onClick={onSettings} aria-label="Ajustes" title="Ajustes">
           ⚙
         </button>
-        <button type="button" className="icon-button" onClick={onHide} aria-label="Ocultar" title="Ocultar (Ctrl+Alt+R)">
+        <button type="button" className="icon-button" onClick={onHide} aria-label="Ocultar" title="Ocultar (Ctrl+Shift+R)">
           —
         </button>
       </div>

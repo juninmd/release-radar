@@ -54,6 +54,7 @@ export function useRadar(): Radar {
   const [run, setRun] = useState<RunSnapshot | null>(null);
   const seenRef = useRef<string[]>(loadSeen());
   const busyRef = useRef(false);
+  const runBusyRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
@@ -112,10 +113,13 @@ export function useRadar(): Radar {
 
   const startRun = useCallback(
     async (dryRun: boolean) => {
+      if (runBusyRef.current) return;
+      runBusyRef.current = true;
       try {
         const started = await api.startRun(dryRun);
         setRun(started);
-        for (;;) {
+        // Acompanha por no máximo ~30 min e desiste, em vez de poll infinito.
+        for (let attempt = 0; attempt < 900; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
           const snapshot = await api.runStatus();
           setRun(snapshot);
@@ -132,6 +136,8 @@ export function useRadar(): Radar {
           stats: null,
           error: err instanceof Error ? err.message : "Falha ao iniciar a rodada.",
         });
+      } finally {
+        runBusyRef.current = false;
       }
     },
     [refresh],
