@@ -69,6 +69,7 @@ def format_caption(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
         [
             f"🚨 <b>{escape(analysis.title)}</b>",
             f"🎭 {category_label(analysis.category)} | {escape(candidate.channel)}",
+            *content_line(analysis),
             escape(hype_badge(hype_score(analysis))),
             f"🗓 {escape(analysis.release_window)}",
             f'{link_icon(candidate)} <a href="{escape(candidate.url)}">{link_label(candidate)}</a>',
@@ -81,6 +82,7 @@ def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
         f"🚨 <b>{escape(analysis.title)}</b>",
         f"🎭 Categoria: {category_label(analysis.category)}",
         f"📺 Fonte: {escape(candidate.channel)}",
+        *content_line(analysis),
         f"🗓 Estreia prevista: {escape(analysis.release_window)}",
         f"🎯 Confiança na identificação: {analysis.confidence:.0%}",
         escape(hype_badge(hype_score(analysis))),
@@ -127,6 +129,14 @@ def format_message(candidate: ReleaseCandidate, analysis: ReleaseAnalysis) -> st
     if len(text) <= TELEGRAM_MAX_LEN:
         return text
     return text[: TELEGRAM_MAX_LEN - 80].rsplit("\n", 1)[0] + "\n\n⚠️ Mensagem truncada."
+
+
+CONTENT_LABELS = {"trailer": "Trailer", "teaser": "Teaser", "announcement": "Anúncio"}
+
+
+def content_line(analysis: ReleaseAnalysis) -> list[str]:
+    label = CONTENT_LABELS.get(analysis.content_type)
+    return [f"🎞 Tipo: {label}"] if label else []
 
 
 def escape(text: str) -> str:

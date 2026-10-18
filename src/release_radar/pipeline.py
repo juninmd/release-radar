@@ -4,6 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+import psycopg2
 from rich.console import Console
 from rich.logging import RichHandler
 
@@ -19,13 +20,16 @@ from .db import (
     reserve_candidate,
     save_analysis,
 )
+from .dedupe import analysis_keys, candidate_keys, work_already_posted
 from .fingerprint import content_hash
+from .links import link_kind
 from .models import ReleaseCandidate
-from .release_policy import already_released, confirmed_upcoming
+from .release_policy import already_released, confirmed_upcoming, is_not_trailer
 from .settings_store import effective_settings, read_overrides
 from .sources import discover_extra_sources
 from .telegram_bot import TelegramPublisher
 from .transcriber import transcribe_audio
+from .work_identity import classify_video_title
 from .youtube import download_audio, enrich_candidate, get_channel_candidates
 
 logger = logging.getLogger(__name__)
@@ -43,6 +47,8 @@ class RunStats:
     skipped_not_release: int = 0
     skipped_released: int = 0
     skipped_unconfirmed: int = 0
+    skipped_clip: int = 0
+    skipped_duplicate: int = 0
     failed: int = 0
 
 
@@ -78,20 +84,34 @@ async def run_pipeline(
         for candidate in candidates:
             if stats.analyzed >= max_items:
                 break
+            # Antes do enrich: evita uma ida ao yt-dlp para um item que ja conhecemos.
+            if get_item(conn, candidate.external_id):
+                stats.skipped_existing += 1
+                continue
             enriched = (
                 enrich_candidate(candidate, settings.yt_dlp_opts)
                 if candidate.source == YOUTUBE_SOURCE
                 else candidate
             )
             fingerprint = content_hash(enriched.title, enriched.channel, enriched.description)
-            if get_item(conn, enriched.external_id):
-                stats.skipped_existing += 1
-                continue
-            if not dry_run and not reserve_candidate(conn, enriched, fingerprint):
+            keys = candidate_keys(enriched)
+            if not dry_run and not reserve_candidate(
+                conn, enriched, fingerprint, keys[0] if keys else None
+            ):
                 stats.skipped_existing += 1
                 continue
             if not dry_run:
                 stats.reserved += 1
+            is_video = link_kind(enriched.url, enriched.source) == "video"
+            # Gates baratos antes de baixar audio/transcrever/chamar a LLM.
+            if is_video and classify_video_title(enriched.title) == "clip":
+                skip(conn, dry_run, enriched.external_id, "Clipe ou comentario, nao trailer")
+                stats.skipped_clip += 1
+                continue
+            if work_already_posted(conn, keys):
+                skip(conn, dry_run, enriched.external_id, "Trailer desta obra ja publicado")
+                stats.skipped_duplicate += 1
+                continue
             try:
                 transcript = maybe_transcribe(settings, enriched)
                 analysis = analyze_release(
@@ -102,8 +122,11 @@ async def run_pipeline(
                     model=settings.llm_model,
                     timeout=settings.llm_timeout,
                 )
+                work_keys = analysis_keys(enriched, analysis)
                 if not dry_run:
-                    save_analysis(conn, enriched, transcript, analysis)
+                    save_analysis(
+                        conn, enriched, transcript, analysis, work_keys[0] if work_keys else None
+                    )
                 stats.analyzed += 1
                 if already_released(analysis):
                     if not dry_run:
@@ -113,10 +136,18 @@ async def run_pipeline(
                 if not analysis.is_release_signal:
                     stats.skipped_not_release += 1
                     continue
+                if is_video and is_not_trailer(analysis):
+                    skip(conn, dry_run, enriched.external_id, "Clipe ou comentario, nao trailer")
+                    stats.skipped_clip += 1
+                    continue
                 if not confirmed_upcoming(analysis):
                     if not dry_run:
                         mark_skipped(conn, enriched.external_id, "Estreia futura nao confirmada")
                     stats.skipped_unconfirmed += 1
+                    continue
+                if work_already_posted(conn, [*keys, *work_keys]):
+                    skip(conn, dry_run, enriched.external_id, "Trailer desta obra ja publicado")
+                    stats.skipped_duplicate += 1
                     continue
                 if dry_run:
                     logger.info("Dry-run would post: %s", enriched.title)
@@ -132,6 +163,13 @@ async def run_pipeline(
     finally:
         conn.close()
     return stats
+
+
+def skip(
+    conn: psycopg2.extensions.connection, dry_run: bool, external_id: str, reason: str
+) -> None:
+    if not dry_run:
+        mark_skipped(conn, external_id, reason)
 
 
 def discover(settings: Settings) -> list[ReleaseCandidate]:

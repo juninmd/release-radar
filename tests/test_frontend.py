@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ ITEMS = [
         "id": "video",
         "title": "Fronteira de Órion",
         "kind": "video",
+        "content_type": "trailer",
         "source": "youtube",
         "url": "https://youtu.be/demo",
         "category": "movies",
@@ -217,3 +219,38 @@ def test_untrusted_titles_and_urls_cannot_inject_markup(page, app_url: str) -> N
     assert not page.evaluate("Boolean(window.injected)")
     expect(page.locator("a.card-link")).to_have_count(0)
     expect(page.locator(".card-link")).to_have_text("Link indisponível")
+
+
+def test_video_badge_tells_trailers_apart_and_flags_fresh_posts(page, app_url: str) -> None:
+    fresh = datetime.now().isoformat()
+    stale = (datetime.now() - timedelta(days=10)).isoformat()
+    items = [
+        {**ITEMS[0], "content_type": "teaser", "posted_at": fresh},
+        {**ITEMS[1], "id": "old", "kind": "video", "content_type": "trailer", "posted_at": stale},
+        {**ITEMS[2], "id": "legacy", "kind": "video", "content_type": "video"},
+    ]
+    load(page, app_url, items)
+    badges = page.locator(".thumb .kind").all_text_contents()
+    assert badges == ["Teaser", "Trailer", "Vídeo"]
+    expect(page.get_by_role("link", name="Assistir teaser: Fronteira de Órion")).to_be_visible()
+    expect(
+        page.get_by_role("link", name="Assistir trailer: Maré Alta: uma nova temporada")
+    ).to_be_visible()
+    expect(page.get_by_role("link", name="Assistir: A Última Cidade")).to_be_visible()
+    expect(page.locator(".fresh")).to_have_count(1)
+    expect(page.locator(".card").first.locator(".fresh")).to_have_text("Novo")
+
+
+def test_sort_by_nearest_premiere_puts_dated_upcoming_first_and_resets(page, app_url: str) -> None:
+    items = [
+        {**ITEMS[0], "id": "far", "title": "Distante", "release_date": "2027-03-01"},
+        {**ITEMS[1], "id": "done", "title": "Lançada"},
+        {**ITEMS[2], "id": "near", "title": "Próxima", "release_date": "2026-11-15"},
+    ]
+    load(page, app_url, items)
+    titles = page.locator(".card h3")
+    assert titles.all_inner_texts() == ["Distante", "Lançada", "Próxima"]
+    page.get_by_label("Ordenar").select_option("soon")
+    assert titles.all_inner_texts() == ["Próxima", "Distante", "Lançada"]
+    page.get_by_role("button", name="Limpar filtros").click()
+    assert titles.all_inner_texts() == ["Distante", "Lançada", "Próxima"]

@@ -7,11 +7,15 @@ encontrar algo para assistir, ler ou acompanhar.
 
 ## O que você encontra no painel
 
-- **YouTube:** vídeos e trailers, incluindo links do YouTube encontrados em RSS.
+- **YouTube:** trailers, teasers e anúncios (selo **Trailer**, **Teaser** ou
+  **Anúncio**), incluindo links do YouTube encontrados em RSS. Clipes, cenas,
+  bastidores, entrevistas e reações não aparecem, e cada obra mostra só o trailer
+  mais recente.
 - **Artigos:** notícias e anúncios editoriais.
 - **Páginas oficiais:** páginas de jogos na Steam e de animes no Kitsu.
 - Busca por título ou fonte, sem exigir acentos, e filtros por categoria e disponibilidade.
 - Datas legíveis, detalhes completos e botões para assistir, ler ou abrir a página.
+- Ordenação por **Estreia mais próxima** e o aviso **Novo** para o que foi publicado nas últimas 48 horas.
 - Atualização sem recarregar a página e nova tentativa quando a conexão falhar.
 
 O painel mostra os **120 links mais recentes publicados pelo bot**. Os filtros
@@ -42,9 +46,15 @@ defina o token ou `RELEASE_RADAR_ALLOW_ANON=true`.
 
 1. Coleta links das fontes configuradas, alternando as fontes para que nenhuma monopolize a rodada.
 2. Evita repetir itens com o mesmo identificador, URL ou conteúdo já registrado no PostgreSQL.
+   Para vídeos, também reconhece a **mesma obra** por trás de vários trailers
+   ("Official Trailer", "Final Trailer #2", "TV Spot"...) e publica só o primeiro.
+   Itens já conhecidos nem chegam ao yt-dlp.
 3. Enriquece os metadados e, quando habilitado, transcreve trailers do YouTube.
-4. Analisa se o link anuncia uma obra relevante que ainda vai estrear.
-5. Confere a data e a disponibilidade antes de publicar no Telegram.
+4. Descarta **clipes e comentários** (cena, clipe, featurette, bastidores,
+   entrevista, reação, review) antes de transcrever ou chamar a LLM; a análise
+   também classifica o vídeo em `content_type` e o título de clipe sempre vence.
+5. Analisa se o link anuncia uma obra relevante que ainda vai estrear.
+6. Confere a data e a disponibilidade antes de publicar no Telegram.
 
 Uma obra marcada como já lançada, ou com estreia hoje ou no passado, **não é
 publicada**. Para publicar, o bot exige uma data futura ou uma confirmação de
@@ -56,8 +66,12 @@ da análise, Steam e Kitsu ainda fornecem a indicação de obra futura;
 YouTube e RSS precisam de evidência adicional. Essa regra reduz as postagens
 incertas, mas continua dependendo da qualidade dos metadados e da análise.
 
-> A deduplicação atual reconhece identificadores, URLs e conteúdo. Links
-> diferentes para a mesma obra ainda podem ser registrados separadamente.
+> A identificação da obra compara o título (sem "trailer", "teaser", canal e
+> similares) e, depois da análise, o título original informado pela LLM. Títulos
+> muito diferentes para a mesma obra ainda podem passar; artigos e páginas
+> oficiais não entram nessa regra. Publicações antigas ganham a chave
+> automaticamente na próxima inicialização do banco (coluna `work_key`,
+> reversível com `DROP COLUMN`).
 
 ## Executar localmente
 

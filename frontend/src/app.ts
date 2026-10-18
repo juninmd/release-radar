@@ -7,6 +7,7 @@ export interface ReleaseItem {
   id?: string | null;
   source?: string | null;
   kind: string;
+  content_type?: string | null;
   title: string;
   url: string;
   channel?: string | null;
@@ -63,6 +64,16 @@ const kindLabels: Record<LinkKind, string> = {
   article: "Artigo",
   catalog: "Página oficial",
 };
+
+// Rotulo do que o video e de fato: trailer de lancamento nunca se mistura com clipe.
+const contentLabels: Record<string, string> = {
+  trailer: "Trailer",
+  teaser: "Teaser",
+  announcement: "Anúncio",
+  video: "Vídeo",
+};
+
+const FRESH_MS = 48 * 60 * 60 * 1000;
 
 const categoryLabels: Record<Category, string> = {
   movies: "Filmes",
@@ -159,6 +170,19 @@ export function releaseWindow(item: Pick<ReleaseItem, "release_date" | "release_
   return value;
 }
 
+export function isFresh(item: Pick<ReleaseItem, "posted_at">, nowMs: number = Date.now()): boolean {
+  const posted = Date.parse(item.posted_at ?? "");
+  return Number.isFinite(posted) && nowMs - posted < FRESH_MS;
+}
+
+export function sortByNearestPremiere(items: readonly ReleaseItem[]): ReleaseItem[] {
+  const day = (item: ReleaseItem): string =>
+    resolveAvailability(item.availability) === "upcoming" && isoDate.test(item.release_date ?? "")
+      ? (item.release_date as string)
+      : "9999-99-99";
+  return [...items].sort((a, b) => day(a).localeCompare(day(b)));
+}
+
 export function filterItems(items: readonly ReleaseItem[], filters: FilterState): ReleaseItem[] {
   const query = normalize(filters.query.trim());
   return items.filter(
@@ -211,7 +235,8 @@ export function makeCard(item: ReleaseItem, doc: Document = document): HTMLEleme
   thumb.className = "thumb";
   const badge = doc.createElement("span");
   badge.className = "kind";
-  badge.textContent = isLinkKind(item.kind) ? kindLabels[item.kind] : "Link";
+  badge.textContent =
+    contentLabels[item.content_type ?? ""] ?? (isLinkKind(item.kind) ? kindLabels[item.kind] : "Link");
   const fallback = () => {
     thumb.classList.add("thumb-fallback");
     thumb.replaceChildren(doc.createTextNode("◉"), badge);
@@ -240,6 +265,12 @@ export function makeCard(item: ReleaseItem, doc: Document = document): HTMLEleme
   const channel = doc.createElement("span");
   channel.textContent = item.channel || "Fonte original";
   meta.append(category, dot, channel);
+  if (isFresh(item)) {
+    const fresh = doc.createElement("span");
+    fresh.className = "fresh";
+    fresh.textContent = "Novo";
+    meta.append(fresh);
+  }
   const title = doc.createElement("h3");
   title.textContent = item.title;
   const state = resolveAvailability(item.availability);
@@ -258,7 +289,13 @@ export function makeCard(item: ReleaseItem, doc: Document = document): HTMLEleme
   const link = doc.createElement(url ? "a" : "span");
   link.className = "card-link";
   if (url) {
-    const action = isLinkKind(item.kind) ? linkActions[item.kind] : "Abrir fonte";
+    const typed = item.content_type === "trailer" || item.content_type === "teaser";
+    const action =
+      item.kind === "video" && typed
+        ? `Assistir ${(contentLabels[item.content_type ?? ""] ?? "").toLowerCase()}`
+        : isLinkKind(item.kind)
+          ? linkActions[item.kind]
+          : "Abrir fonte";
     link.textContent = `${action} ↗`;
     link.setAttribute("href", url);
     link.setAttribute("target", "_blank");
@@ -312,6 +349,7 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
   const search = queryRequired<HTMLInputElement>(doc, "#search");
   const categorySelect = queryRequired<HTMLSelectElement>(doc, "#category");
   const availabilitySelect = queryRequired<HTMLSelectElement>(doc, "#availability");
+  const sortSelect = queryRequired<HTMLSelectElement>(doc, "#sort");
   const resetButton = queryRequired<HTMLButtonElement>(doc, "#reset-filters");
   const tabs = Array.from(doc.querySelectorAll<HTMLButtonElement>(".tab"));
 
@@ -336,7 +374,8 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
 
   function render(): void {
     const visible = filterItems(items, currentFilters());
-    cards.replaceChildren(...visible.map((item) => makeCard(item, doc)));
+    const ordered = sortSelect.value === "soon" ? sortByNearestPremiere(visible) : visible;
+    cards.replaceChildren(...ordered.map((item) => makeCard(item, doc)));
     count.textContent = countLabel(visible.length, items.length, loadState());
     refresh.disabled = isLoading;
     refresh.textContent = isLoading ? "Atualizando…" : "Atualizar";
@@ -383,6 +422,7 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
     selectedKind = "all";
     categorySelect.value = "all";
     availabilitySelect.value = "all";
+    sortSelect.value = "recent";
     search.value = "";
     render();
   }
@@ -396,6 +436,7 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
   search.addEventListener("input", render);
   categorySelect.addEventListener("change", render);
   availabilitySelect.addEventListener("change", render);
+  sortSelect.addEventListener("change", render);
   resetButton.addEventListener("click", resetFilters);
   refresh.addEventListener("click", loadItems);
   retry.addEventListener("click", loadItems);

@@ -19,6 +19,13 @@ def release_state(release_date: str, release_status: str, today: date | None = N
     return "unconfirmed"
 
 
+NOT_TRAILER_TYPES = frozenset({"clip", "other"})
+
+
+def is_not_trailer(analysis: ReleaseAnalysis) -> bool:
+    return analysis.content_type in NOT_TRAILER_TYPES
+
+
 def already_released(analysis: ReleaseAnalysis, today: date | None = None) -> bool:
     return release_state(analysis.release_date, analysis.release_status, today) == "released"
 
