@@ -81,3 +81,36 @@ def test_analysis_from_json_tolerates_missing_or_malformed_hype() -> None:
     assert analysis_from_json(make_candidate(), {}).hype.fanbase == 0
     assert analysis_from_json(make_candidate(), {"hype": "n/a"}).hype.fanbase == 0
     assert analysis_from_json(make_candidate(), {"hype": {"fanbase": "alto"}}).hype.fanbase == 0
+
+
+def test_title_that_is_a_clip_overrides_what_the_llm_claims() -> None:
+    clip = ReleaseCandidate(
+        external_id="clip",
+        title="Dune: Part Three | Movie Clip",
+        url="https://youtu.be/clip",
+        channel="Canal",
+        category="movies",
+        duration=60,
+        upload_date=None,
+        thumbnail=None,
+    )
+
+    analysis = analysis_from_json(clip, {"is_release_signal": True, "content_type": "trailer"})
+
+    assert analysis.content_type == "clip"
+
+
+def test_unknown_content_type_from_llm_is_normalised() -> None:
+    video = ReleaseCandidate(
+        external_id="v",
+        title="Dune: Part Three",
+        url="https://youtu.be/v",
+        channel="Canal",
+        category="movies",
+        duration=60,
+        upload_date=None,
+        thumbnail=None,
+    )
+
+    assert analysis_from_json(video, {"content_type": " Teaser "}).content_type == "teaser"
+    assert analysis_from_json(video, {"content_type": "banana"}).content_type == "unknown"

@@ -506,6 +506,15 @@ footer span:first-child {
   text-decoration: underline;
   font-size: 0.83rem;
 }
+.fresh {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
 .availability {
   display: inline-block;
   align-self: flex-start;
