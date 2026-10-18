@@ -8,6 +8,7 @@ const count = document.querySelector("#result-count");
 const search = document.querySelector("#search");
 const categorySelect = document.querySelector("#category");
 const availabilitySelect = document.querySelector("#availability");
+const sortSelect = document.querySelector("#sort");
 const tabs = [...document.querySelectorAll(".tab")];
 let items = [];
 let selectedKind = "all";
@@ -19,6 +20,14 @@ const labels = {
   article: "Artigo",
   catalog: "Página oficial",
 };
+// Rotulo do que o video e de fato: trailer de lancamento nunca se mistura com clipe.
+const contentLabels = {
+  trailer: "Trailer",
+  teaser: "Teaser",
+  announcement: "Anúncio",
+  video: "Vídeo",
+};
+const FRESH_MS = 48 * 60 * 60 * 1000;
 const categoryLabels = {
   movies: "Filmes",
   series: "Séries",
@@ -70,6 +79,21 @@ function releaseWindow(item) {
   return value;
 }
 
+function isFresh(item) {
+  const posted = Date.parse(item.posted_at || "");
+  return Number.isFinite(posted) && Date.now() - posted < FRESH_MS;
+}
+
+function sortItems(list) {
+  if (sortSelect.value !== "soon") return list;
+  const day = (item) =>
+    item.availability === "upcoming" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(item.release_date || "")
+      ? item.release_date
+      : "9999-99-99";
+  return [...list].sort((a, b) => day(a).localeCompare(day(b)));
+}
+
 function detailParagraph(title, text) {
   const section = document.createElement("div");
   const heading = document.createElement("h4");
@@ -87,7 +111,8 @@ function makeCard(item) {
   thumb.className = "thumb";
   const badge = document.createElement("span");
   badge.className = "kind";
-  badge.textContent = labels[item.kind] || "Link";
+  badge.textContent =
+    contentLabels[item.content_type] || labels[item.kind] || "Link";
   const fallback = () => {
     thumb.classList.add("thumb-fallback");
     thumb.replaceChildren(document.createTextNode("◉"), badge);
@@ -116,6 +141,12 @@ function makeCard(item) {
   const channel = document.createElement("span");
   channel.textContent = item.channel || "Fonte original";
   meta.append(category, dot, channel);
+  if (isFresh(item)) {
+    const fresh = document.createElement("span");
+    fresh.className = "fresh";
+    fresh.textContent = "Novo";
+    meta.append(fresh);
+  }
   const title = document.createElement("h3");
   title.textContent = item.title;
   const availability = document.createElement("span");
@@ -136,8 +167,11 @@ function makeCard(item) {
   const link = document.createElement(url ? "a" : "span");
   link.className = "card-link";
   if (url) {
+    const trailerAction = ["trailer", "teaser"].includes(item.content_type)
+      ? `Assistir ${contentLabels[item.content_type].toLowerCase()}`
+      : "Assistir";
     const action =
-      { video: "Assistir", article: "Ler artigo", catalog: "Ver página" }[
+      { video: trailerAction, article: "Ler artigo", catalog: "Ver página" }[
         item.kind
       ] || "Abrir fonte";
     link.textContent = `${action} ↗`;
@@ -186,7 +220,7 @@ function render() {
         `${item.title} ${item.channel} ${categoryLabels[item.category] || item.category}`,
       ).includes(query),
   );
-  cards.replaceChildren(...visible.map(makeCard));
+  cards.replaceChildren(...sortItems(visible).map(makeCard));
   count.textContent = hasLoaded
     ? `${visible.length} de ${items.length} ${items.length === 1 ? "link" : "links"}`
     : isLoading
@@ -249,10 +283,12 @@ tabs.forEach((tab) =>
 search.addEventListener("input", render);
 categorySelect.addEventListener("change", render);
 availabilitySelect.addEventListener("change", render);
+sortSelect.addEventListener("change", render);
 document.querySelector("#reset-filters").addEventListener("click", () => {
   selectedKind = "all";
   categorySelect.value = "all";
   availabilitySelect.value = "all";
+  sortSelect.value = "recent";
   search.value = "";
   render();
 });

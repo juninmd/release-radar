@@ -65,6 +65,8 @@ def test_http_api_only_exposes_published_items_and_separates_destinations(web_ur
     assert response.headers["cache-control"] == "no-store"
     items = response.json()["items"]
     assert [item["kind"] for item in items] == ["catalog", "article", "video"]
+    # Titulo neutro nao prova que e trailer: o painel nao inventa o rotulo.
+    assert [item["content_type"] for item in items] == ["catalog", "article", "video"]
     assert {item["title"] for item in items} == {"Obra youtube", "Obra rss", "Obra steam"}
     assert all(item["summary"] == "Sinopse de teste" for item in items)
     assert not any("transcript" in item or "raw" in item for item in items)

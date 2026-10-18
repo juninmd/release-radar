@@ -9,6 +9,7 @@ from typing import Any
 from openai import OpenAI
 
 from .models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
+from .work_identity import classify_video_title
 
 logger = logging.getLogger(__name__)
 _RELEASE_DATE_RE = re.compile(
@@ -71,6 +72,11 @@ Marque upcoming somente se os metadados confirmarem uma estreia futura ou anunci
 inedito de obra ainda indisponivel. Sem essa evidencia, use unknown. Titulos devem
 preservar numero de sequencia, temporada, remake e ano quando identificarem a obra.
 
+Classifique o tipo do video em content_type: trailer (trailer oficial), teaser,
+announcement (anuncio/reveal), clip (trecho ou cena solta, featurette, bastidores,
+entrevista, gameplay avulso) ou other (review, reacao, analise, compilado). Clip e
+other NAO sao trailers de lancamento: marque is_release_signal=false.
+
 Categoria esperada: {candidate.category}
 Fonte: {candidate.source} ({candidate.channel})
 Titulo: {candidate.title}
@@ -104,6 +110,7 @@ Retorne JSON com este schema:
   "release_window": "data, janela ou desconhecido",
   "release_date": "AAAA-MM-DD se a fonte informar uma data exata, senao vazio",
   "release_status": "upcoming|released|unknown (released se ja estiver disponivel)",
+  "content_type": "trailer|teaser|announcement|clip|other",
   "platforms": ["cinema", "Netflix", "PS5"],
   "genres": ["acao"],
   "synopsis": "sinopse rica em 2-4 frases",
@@ -125,6 +132,7 @@ Retorne JSON com este schema:
 
 
 def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> ReleaseAnalysis:
+    content_type = content_type_from_json(data.get("content_type"), candidate)
     return ReleaseAnalysis(
         is_release_signal=data.get("is_release_signal") is True,
         category=str(data.get("category") or candidate.category),
@@ -144,7 +152,19 @@ def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> Rel
         raw=data,
         release_date=source_release_date(candidate) or str(data.get("release_date") or ""),
         release_status=release_status_from_json(data.get("release_status")),
+        content_type=content_type,
     )
+
+
+_CONTENT_TYPES = {"trailer", "teaser", "announcement", "clip", "other", "unknown"}
+
+
+def content_type_from_json(value: Any, candidate: ReleaseCandidate) -> str:
+    """O titulo claramente de clipe vence a LLM; ela so refina o que o titulo nao decide."""
+    if candidate.source == "youtube" and classify_video_title(candidate.title) == "clip":
+        return "clip"
+    kind = str(value or "unknown").strip().lower()
+    return kind if kind in _CONTENT_TYPES else "unknown"
 
 
 def release_status_from_json(value: Any) -> str:
@@ -190,8 +210,9 @@ def fallback_analysis(
     )
     # Steam e Kitsu ja entregam so itens nao lancados; sem LLM, o titulo sozinho
     # ("Halloween: The Game") nunca casaria com as palavras-chave.
-    is_release = candidate.source in ("steam", "kitsu") or any(
-        word in title_l for word in release_words
+    content_type = content_type_from_json(None, candidate)
+    is_release = content_type != "clip" and (
+        candidate.source in ("steam", "kitsu") or any(word in title_l for word in release_words)
     )
     release_date = source_release_date(candidate)
     summary = candidate.description[:700] or transcript[:700]
@@ -213,4 +234,5 @@ def fallback_analysis(
         raw={"fallback": True, "raw_text": raw_text},
         release_date=release_date,
         release_status="upcoming" if candidate.source in ("steam", "kitsu") else "unknown",
+        content_type=content_type,
     )

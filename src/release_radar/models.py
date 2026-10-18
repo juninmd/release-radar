@@ -51,6 +51,8 @@ class ReleaseAnalysis:
     raw: dict[str, Any] = field(default_factory=dict)
     release_date: str = ""
     release_status: str = "unknown"
+    # trailer|teaser|announcement|clip|other|unknown: clipe/comentario nao e trailer de estreia.
+    content_type: str = "unknown"
 
     @property
     def summary(self) -> str:

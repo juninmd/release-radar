@@ -7,6 +7,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
+from .dedupe import backfill_work_keys
 from .models import ReleaseAnalysis, ReleaseCandidate
 
 
@@ -85,6 +86,11 @@ def init_db(dsn: str) -> None:
                 "ALTER TABLE release_items "
                 "ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'youtube'"
             )
+            # Reversivel: DROP INDEX idx_release_items_work_key + DROP COLUMN work_key.
+            cur.execute("ALTER TABLE release_items ADD COLUMN IF NOT EXISTS work_key TEXT")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_release_items_work_key ON release_items(work_key)"
+            )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_release_items_status ON release_items(status)"
             )
@@ -96,6 +102,7 @@ def init_db(dsn: str) -> None:
                 "ON release_events(external_id)"
             )
         conn.commit()
+        backfill_work_keys(conn)
     finally:
         conn.close()
 
@@ -111,14 +118,15 @@ def reserve_candidate(
     conn: psycopg2.extensions.connection,
     candidate: ReleaseCandidate,
     content_hash: str,
+    work_key: str | None = None,
 ) -> bool:
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO release_items
                 (external_id, source, content_hash, title, url, channel, category, duration,
-                 upload_date, thumbnail, description)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 upload_date, thumbnail, description, work_key)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
             """,
             (
@@ -133,6 +141,7 @@ def reserve_candidate(
                 candidate.upload_date,
                 candidate.thumbnail,
                 candidate.description,
+                work_key,
             ),
         )
         inserted = cur.rowcount == 1
@@ -145,12 +154,14 @@ def save_analysis(
     candidate: ReleaseCandidate,
     transcript: str,
     analysis: ReleaseAnalysis,
+    work_key: str | None = None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE release_items
-            SET transcript = %s,
+            SET work_key = COALESCE(%s, work_key),
+                transcript = %s,
                 analysis = %s,
                 analysis_summary = %s,
                 is_release_signal = %s,
@@ -159,6 +170,7 @@ def save_analysis(
             WHERE external_id = %s
             """,
             (
+                work_key,
                 transcript,
                 Json(analysis_to_json(analysis)),
                 analysis.summary,

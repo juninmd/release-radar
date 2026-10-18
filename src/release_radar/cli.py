@@ -66,6 +66,8 @@ def main() -> None:
         "skipped_not_release": "Sem anúncio de estreia",
         "skipped_released": "Já lançados",
         "skipped_unconfirmed": "Estreia futura não confirmada",
+        "skipped_clip": "Clipes e comentários (não são trailers)",
+        "skipped_duplicate": "Trailer de obra já publicada",
         "failed": "Falhas de processamento",
     }
     for key, label in labels.items():
