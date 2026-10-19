@@ -10,6 +10,7 @@ from xml.etree import ElementTree
 import httpx
 
 from ..models import ReleaseCandidate
+from ..resilience import with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ def fetch_rss(
     client: httpx.Client, feed_url: str, category: str, limit: int
 ) -> list[ReleaseCandidate]:
     """Itens recentes de um feed RSS 2.0, RDF ou Atom (sem API key)."""
-    root = ElementTree.fromstring(_read_body(client, feed_url))
+    body = with_retries(lambda: _read_body(client, feed_url), label=f"RSS {feed_url}")
+    root = ElementTree.fromstring(body)
     feed_title = _first_text(root, ("channel/title", "title")) or feed_url
     entries = _find_all(root, ("item", "entry"))
     candidates: list[ReleaseCandidate] = []

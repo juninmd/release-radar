@@ -70,6 +70,9 @@ class Settings(BaseSettings):
 
     http_timeout: float = 20.0
 
+    # "text" (legivel, padrao) ou "json" (uma linha JSON por log, para agregadores).
+    log_format: str = "text"
+
     source_limit: int = 10
     max_items_per_run: int = 20
     max_transcription_seconds: int = 420
@@ -100,6 +103,10 @@ class Settings(BaseSettings):
 
     data_dir: Path = Field(default=Path("/tmp/release-radar"))
     audio_dir: Path = Field(default=Path("/tmp/release-radar/audio"))
+
+    @property
+    def json_logs(self) -> bool:
+        return self.log_format.strip().lower() == "json"
 
     @property
     def postgres_dsn(self) -> str:

@@ -119,9 +119,22 @@ O banco mantém os IDs antigos do YouTube e usa prefixos nas demais fontes:
 
 ```powershell
 uv run ruff check .
+uv run ruff format --check .
+uv run mypy
 uv run pytest -q
 uv build
 ```
+
+O painel é escrito em TypeScript (`frontend/src/app.ts`) e compilado para
+`src/release_radar/static/app.js`, que é versionado. Depois de editar o `.ts`:
+
+```powershell
+cd frontend
+npm ci
+npm run check   # typecheck, testes (vitest) e build
+```
+
+A CI falha se o `app.js` commitado divergir do que o `app.ts` gera.
 
 Para testar o navegador, instale o grupo opcional e o Chromium:
 
@@ -140,15 +153,56 @@ por teste. Use uma base destinada a testes. Sem essa variável, tentam usar
 `pgserver` quando instalado; sem ambos, os testes de PostgreSQL são pulados.
 Sem o grupo `browser`, os testes de navegador também são pulados.
 
-A CI do PR executa lint, testes com PostgreSQL e Chromium, gera o pacote
-distribuível e guarda as capturas da UI como artefato.
+A CI do PR executa lint, formatação, `mypy`, o check do frontend (incluindo a
+verificação do `app.js` gerado), testes com PostgreSQL e Chromium, gera o pacote
+distribuível e guarda as capturas da UI como artefato. Cada push na `main` roda
+os mesmos checks antes de publicar a imagem Docker (`docker.yml` reutiliza o
+workflow `build.yml`).
+
+## Banco de dados e migrações
+
+O esquema é versionado em `src/release_radar/sql/NNNN_nome.sql`. Na inicialização
+(`run` e `web`), as migrações pendentes são aplicadas em ordem, cada uma em sua
+transação e protegidas por um advisory lock, e registradas em `schema_migrations`.
+Para mudar o esquema, crie o próximo arquivo numerado (nunca edite um já aplicado).
+As migrações iniciais são idempotentes e adotam bases criadas antes do runner.
+
+## Resiliência e observabilidade
+
+- **Retry com backoff** (exponencial, com jitter e respeito a `Retry-After`) nas
+  fontes HTTP (Steam, Kitsu, RSS), no Whisper e na LLM. Só falhas transitórias
+  (rede, timeout, 429 e 5xx) são repetidas.
+- **Circuit breaker por rodada:** três falhas seguidas do Whisper/download
+  desligam a transcrição pelo resto da rodada; três falhas seguidas da LLM
+  interrompem a rodada (`aborted: llm_unavailable`) em vez de marcar vários
+  itens como falhos.
+- **Estatísticas por rodada** (`--json` ou o log `Run finished`): candidatos por
+  fonte, falhas por fonte (`source_errors`), transcrições, tempo total e tempo na LLM.
+- `LOG_FORMAT=json` emite uma linha JSON por log (stderr), pronta para
+  Loki/Datadog/CloudWatch; o padrão continua legível no terminal.
+
+## Painel (API)
+
+`GET /api/releases` usa um pool de conexões, cache de 15 s (com *single-flight*;
+se o banco cair, serve o último resultado por até 5 min), limite de requisições
+por IP (60 de rajada, 2/s; responde `429` com `Retry-After`) e leitura paginada
+até completar os 120 itens mesmo com muitos clipes ocultos. Os arquivos
+estáticos usam `ETag` e `Cache-Control: no-cache` (um deploy novo aparece na
+hora e, sem mudança, o navegador recebe `304`). `GET /healthz` confere o banco.
+O painel **não tem autenticação**: se sair da máquina local, coloque-o atrás de
+um proxy com autenticação (por trás de proxy, o limite vale por IP do proxy).
 
 ## Container e cluster
 
-A imagem existente é `ghcr.io/juninmd/release-radar:latest`. O comando padrão
+A imagem existente é `ghcr.io/juninmd/release-radar:latest`. Ela roda sem
+privilégios (usuário `radar`), com a versão do `uv` fixada. O comando padrão
 executa uma rodada do bot. Para servir o painel em outro processo/container,
-use `uv run release-radar web --host 0.0.0.0 --port 8765`, com as mesmas
-variáveis de conexão ao PostgreSQL.
+use `release-radar web --host 0.0.0.0 --port 8765`, com as mesmas variáveis de
+conexão ao PostgreSQL; `GET /healthz` serve de probe de liveness/readiness.
+
+Para rodar tudo localmente, o `docker-compose.yml` sobe PostgreSQL e painel
+(`docker compose up -d db web`, em http://127.0.0.1:8765) e roda uma rodada do
+bot sob demanda (`docker compose run --rm bot`).
 
 Os valores padrão dos serviços internos estão no [.env.example](.env.example).
 O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.

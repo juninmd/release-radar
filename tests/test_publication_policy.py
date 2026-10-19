@@ -52,7 +52,7 @@ def test_publication_policy_persists_and_prevents_delivery(
     publisher.publish.return_value = True
     monkeypatch.setattr(pipeline, "init_db", lambda _: init_db(postgres_dsn))
     monkeypatch.setattr(pipeline, "get_connection", lambda _: get_connection(postgres_dsn))
-    monkeypatch.setattr(pipeline, "discover", lambda _: [item])
+    monkeypatch.setattr(pipeline, "discover", lambda *_a: [item])
     monkeypatch.setattr(pipeline, "analyze_release", lambda **_: analysis)
     monkeypatch.setattr(pipeline, "TelegramPublisher", lambda *_: publisher)
     settings = Settings(_env_file=None, analyze_video_content=False)

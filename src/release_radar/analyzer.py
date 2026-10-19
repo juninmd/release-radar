@@ -12,6 +12,8 @@ from .models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
 from .work_identity import classify_video_title
 
 logger = logging.getLogger(__name__)
+# O SDK ja aplica backoff exponencial em 408/409/429/5xx e erros de conexao.
+LLM_MAX_RETRIES = 3
 _RELEASE_DATE_RE = re.compile(
     r"(?:release date|lancamento previsto|lançamento previsto|estreia prevista)"
     r"\s*:\s*(\d{4}-\d{2}-\d{2})",
@@ -35,7 +37,9 @@ def analyze_release(
     if not api_key:
         return fallback_analysis(candidate, transcript)
 
-    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+    client = OpenAI(
+        base_url=base_url, api_key=api_key, timeout=timeout, max_retries=LLM_MAX_RETRIES
+    )
     response = client.chat.completions.create(
         model=model,
         temperature=0.2,

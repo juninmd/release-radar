@@ -5,3 +5,9 @@
 .ruff_cache
 data
 tests
+frontend
+docs
+scripts
+artifacts
+.github
+**/__pycache__

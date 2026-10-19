@@ -132,3 +132,44 @@ def test_legacy_event_index_is_renamed_not_duplicated(legacy_dsn: str) -> None:
         assert indexes == ["idx_release_events_external_id"]
     finally:
         conn.close()
+
+
+def test_migrations_are_recorded_once_and_not_reapplied(postgres_dsn: str) -> None:
+    from release_radar.migrations import apply_migrations, discover_migrations
+
+    expected = [version for version, _ in discover_migrations()]
+    init_db(postgres_dsn)
+    conn = get_connection(postgres_dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+            assert [row[0] for row in cur.fetchall()] == expected
+        assert apply_migrations(conn) == []
+    finally:
+        conn.close()
+
+
+def test_failed_migration_rolls_back_and_is_not_recorded(postgres_dsn: str, tmp_path) -> None:
+    from release_radar.migrations import apply_migrations
+
+    (tmp_path / "0001_ok.sql").write_text("CREATE TABLE ok_table (id INT);")
+    (tmp_path / "0002_bad.sql").write_text("CREATE TABLE half (id INT); SELECT boom();")
+    conn = get_connection(postgres_dsn)
+    try:
+        with pytest.raises(Exception, match="boom"):
+            apply_migrations(conn, tmp_path)
+        with conn.cursor() as cur:
+            cur.execute("SELECT version FROM schema_migrations")
+            assert [row[0] for row in cur.fetchall()] == ["0001"]
+            cur.execute("SELECT to_regclass('half')")
+            assert cur.fetchone()[0] is None
+    finally:
+        conn.close()
+
+
+def test_invalid_migration_name_is_rejected(tmp_path) -> None:
+    from release_radar.migrations import discover_migrations
+
+    (tmp_path / "fix.sql").write_text("SELECT 1;")
+    with pytest.raises(ValueError, match="nome invalido"):
+        discover_migrations(tmp_path)

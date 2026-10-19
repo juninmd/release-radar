@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ def get_channel_candidates(
     limit: int,
     max_duration: int,
     extra_opts: dict[str, Any] | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
 ) -> list[ReleaseCandidate]:
     url = f"https://www.youtube.com/{channel}/videos"
     opts: dict[str, Any] = {
@@ -28,10 +30,12 @@ def get_channel_candidates(
         **(extra_opts or {}),
     }
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to fetch channel %s", channel)
+        if on_error:
+            on_error(channel, exc)
         return []
 
     entries = info.get("entries", []) if info else []
@@ -77,7 +81,7 @@ def enrich_candidate(
         **(extra_opts or {}),
     }
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(candidate.url, download=False)
     except Exception:
         logger.exception("Failed to enrich video %s", candidate.external_id)
@@ -112,7 +116,7 @@ def download_audio(
         "postprocessor_args": {"ffmpeg": ["-ar", "16000", "-ac", "1"]},
         **(extra_opts or {}),
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
+    with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(candidate.url, download=True)
     video_id = str(info.get("id") or candidate.external_id)
     wav_path = output_dir / f"{video_id}.wav"

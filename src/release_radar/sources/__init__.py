@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from functools import partial
 
 import httpx
 
@@ -18,8 +19,16 @@ USER_AGENT = "release-radar/0.1 (+https://github.com/juninmd/release-radar)"
 __all__ = ["discover_extra_sources", "fetch_kitsu", "fetch_rss", "fetch_steam"]
 
 
-def discover_extra_sources(settings: Settings) -> list[ReleaseCandidate]:
-    """Coleta as fontes que nao dependem do YouTube nem de API key."""
+SourceErrorHandler = Callable[[str, Exception], None]
+
+
+def discover_extra_sources(
+    settings: Settings, on_error: SourceErrorHandler | None = None
+) -> list[ReleaseCandidate]:
+    """Coleta as fontes que nao dependem do YouTube nem de API key.
+
+    Uma fonte que falha nao derruba as outras; `on_error(nome, excecao)` permite contabilizar.
+    """
     candidates: list[ReleaseCandidate] = []
     fetchers = _build_fetchers(settings)
     if not fetchers:
@@ -32,8 +41,10 @@ def discover_extra_sources(settings: Settings) -> list[ReleaseCandidate]:
         for name, fetcher in fetchers:
             try:
                 found = fetcher(client)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Source %s failed", name)
+                if on_error:
+                    on_error(name, exc)
                 continue
             logger.info("Source %s returned %s candidates", name, len(found))
             candidates.extend(found)
@@ -62,8 +73,11 @@ def _build_fetchers(
         fetchers.append(
             (
                 f"rss:{feed_url}",
-                lambda client, url=feed_url, cat=category: fetch_rss(
-                    client, feed_url=url, category=cat, limit=settings.rss_limit
+                partial(
+                    fetch_rss,
+                    feed_url=feed_url,
+                    category=category,
+                    limit=settings.rss_limit,
                 ),
             )
         )
