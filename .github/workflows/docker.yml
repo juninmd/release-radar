@@ -16,7 +16,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: juninmd/base-actions/docker-build-push@main
-        with:
-          image-name: ${{ github.repository }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+- uses: docker/build-push-action@v5
+  with:
+    context: .
+    push: true
+    tags: ${{ github.repository }}
