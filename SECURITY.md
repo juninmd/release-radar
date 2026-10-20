@@ -1,36 +1,26 @@
-# Security Policy
+# Política de segurança
 
-## Reporting Security Vulnerabilities
+## Reportar uma vulnerabilidade
 
-If you discover a security vulnerability in release-radar, please report it responsibly by creating a GitHub issue or contacting the maintainers. Avoid disclosing security issues publicly until they have been addressed.
+**Não abra uma issue pública.** Use o botão
+[*Report a vulnerability*](../../security/advisories/new) da aba *Security* do
+repositório (GitHub Private Vulnerability Reporting). Respondemos assim que possível.
 
-## Security Best Practices
+## O que o projeto já faz
 
-### Secrets Management
-- Never commit secrets, API keys, or credentials to version control.
-- Use environment variables for all sensitive configuration.
-- Store secrets in your deployment platform's secret management system (e.g., GitHub Secrets for CI, Kubernetes Secrets for production).
-- `.env` files, certificates (`*.key`, `*.pem`, `*.p12`), and secret directories (`secrets/`, `config/secrets.yml`) are ignored by git.
+- Segredos só por variáveis de ambiente (`.env` está no `.gitignore`; veja `.env.example`).
+- Consultas SQL parametrizadas.
+- Feeds RSS: DOCTYPE recusado (XXE), tamanho máximo e proteção contra **SSRF**
+  (hosts internos, redirecionamentos e resolução DNS para IP privado são bloqueados).
+- Painel em `127.0.0.1` por padrão; `/api/run` e `/api/settings` exigem
+  `RELEASE_RADAR_API_TOKEN` fora de localhost.
+- Cabeçalhos de segurança e CSP restritiva; erros genéricos na API (sem vazar conexão).
+- Dependabot semanal (pip, npm, cargo e GitHub Actions).
 
-### Dependency Security
-- We use Dependabot for automated dependency updates.
-- Run security audits regularly (`pip-audit` for Python dependencies, `npm audit` for Node dependencies if applicable).
-- Pin production dependencies to specific versions.
+## Ao hospedar sua instância
 
-### Application Security
-- All user inputs should be validated and sanitized.
-- Database queries must use parameterized queries to prevent SQL injection.
-- Implement rate limiting on API endpoints.
-- Configure CORS appropriately for your deployment.
-- Use proper authentication and authorization where applicable.
-- Do not leak sensitive information in error messages or logs.
+- Defina `RELEASE_RADAR_API_TOKEN` e coloque o painel atrás de HTTPS.
+- Nunca versione `.env`, tokens do Telegram ou chaves de LLM.
+- Ative *secret scanning* e *push protection* no repositório.
 
-### Infrastructure Security
-- Use HTTPS everywhere in production.
-- Configure security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy).
-- Apply security patches promptly.
-- Follow the principle of least privilege for all access.
-
-## Supported Versions
-
-We currently provide security updates for the latest main branch.
+Versões suportadas: apenas a branch `main`.

@@ -2,7 +2,7 @@
 
 Sobe um PostgreSQL efêmero (pgserver), semeia alguns lançamentos e serve as
 rotas do painel em http://127.0.0.1:8765, para testar o app desktop de ponta a
-ponta sem cluster, sem fontes externas e sem Telegram.
+ponta sem servidor, sem fontes externas e sem Telegram.
 
 Uso (da raiz do repositório):
 

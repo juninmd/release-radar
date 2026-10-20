@@ -172,7 +172,7 @@ def test_settings_reject_internal_feed_hosts(api) -> None:
     for value in (
         "games|http://169.254.169.254/latest/meta-data/",
         "games|http://127.0.0.1:8000/feed",
-        "games|http://litellm.ai.svc.cluster.local:4000/feed",
+        "games|http://service.svc.cluster.local:4000/feed",
         "games|ftp://example.test/feed",
         "games|example.test/feed",
     ):

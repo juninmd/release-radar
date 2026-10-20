@@ -84,11 +84,11 @@ class Settings(BaseSettings):
     youtube_player_client: str = ""
     youtube_cookies_file: str = ""
 
-    whisper_base_url: str = "http://whisper.ai.svc.cluster.local:9000"
+    whisper_base_url: str = "http://localhost:9000"
     whisper_timeout: float = 600.0
 
-    llm_base_url: str = "http://litellm.ai.svc.cluster.local:4000/v1"
-    llm_model: str = "cloud/auto"
+    llm_base_url: str = "http://localhost:4000/v1"
+    llm_model: str = "gpt-4o-mini"
     llm_api_key: str = ""
     llm_timeout: float = 120.0
 

@@ -1,233 +1,187 @@
-# Release Radar
+<div align="center">
 
-Um radar privado para descobrir filmes, séries, jogos e animes que ainda vão
-estrear. O bot reúne anúncios de várias fontes, analisa o conteúdo e publica os
-links aprovados no Telegram. O painel web organiza essas publicações para você
-encontrar algo para assistir, ler ou acompanhar.
+<img src="docs/assets/banner.svg" alt="Release Radar — as próximas histórias começam aqui" width="100%">
 
-## O que você encontra no painel
+# 📡 Release Radar
 
-- **YouTube:** trailers, teasers e anúncios (selo **Trailer**, **Teaser** ou
-  **Anúncio**), incluindo links do YouTube encontrados em RSS. Clipes, cenas,
-  bastidores, entrevistas e reações não aparecem, e cada obra mostra só o trailer
-  mais recente.
-- **Artigos:** notícias e anúncios editoriais.
-- **Páginas oficiais:** páginas de jogos na Steam e de animes no Kitsu.
-- Busca por título ou fonte, sem exigir acentos, e filtros por categoria e disponibilidade.
-- Datas legíveis, detalhes completos e botões para assistir, ler ou abrir a página.
-- Ordenação por **Estreia mais próxima** e o aviso **Novo** para o que foi publicado nas últimas 48 horas.
-- Atualização sem recarregar a página e nova tentativa quando a conexão falhar.
+**Descubra o que vem por aí: filmes, séries, jogos e animes — antes de todo mundo.**
 
-O painel mostra os **120 links mais recentes publicados pelo bot**. Os filtros
-atuam nessa seleção. Publicações anteriores continuam no histórico e podem
-aparecer como **Já disponível** quando a estreia passar; isso não gera uma nova
-mensagem no Telegram. **A confirmar** significa que uma publicação antiga não
-tem dados suficientes para determinar a disponibilidade atual.
+O bot varre trailers, notícias e páginas oficiais, uma LLM separa o que realmente
+**ainda vai estrear**, e os links aprovados chegam no seu Telegram, no painel web e no
+widget de desktop.
 
-As capturas de [desktop, celular e outros estados](docs/UI_PREVIEW.md) usam
-dados fictícios e mostram a interface real executada em Chromium.
+[![Build](https://github.com/juninmd/release-radar/actions/workflows/build.yml/badge.svg)](https://github.com/juninmd/release-radar/actions/workflows/build.yml)
+![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![Tauri](https://img.shields.io/badge/desktop-Tauri%20v2-FFC131?logo=tauri&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## App desktop
+<img src="docs/previews/desktop.png" alt="Painel web do Release Radar" width="860">
 
-Há também um app de desktop em [`desktop/`](desktop/README.md) (Tauri v2 +
-React): uma janela compacta sempre no topo, com ícone na bandeja, notificações de
-novidades, atalho global `Ctrl+Shift+R`, skins e atualização assinada. Ele
-**consome a API publicada** pelo painel — não fala com o PostgreSQL nem com o
-Telegram — e permite disparar uma rodada do bot e ajustar fontes e limites pela
-própria interface. O painel web continua igual.
+</div>
 
-Para servir essa API em rede, defina `RELEASE_RADAR_API_TOKEN` e suba o painel
-com `--host 0.0.0.0` (veja [.env.example](.env.example) e
-[desktop/README.md](desktop/README.md)). Sem o token, uma exposição fora de
-`localhost` passa a recusar `/api/run` e `/api/settings` com 403 até que você
-defina o token ou `RELEASE_RADAR_ALLOW_ANON=true`.
+---
 
-## Como o bot decide o que publicar
+## ✨ Destaques
 
-1. Coleta links das fontes configuradas, alternando as fontes para que nenhuma monopolize a rodada.
-2. Evita repetir itens com o mesmo identificador, URL ou conteúdo já registrado no PostgreSQL.
-   Para vídeos, também reconhece a **mesma obra** por trás de vários trailers
-   ("Official Trailer", "Final Trailer #2", "TV Spot"...) e publica só o primeiro.
-   Itens já conhecidos nem chegam ao yt-dlp.
-3. Enriquece os metadados e, quando habilitado, transcreve trailers do YouTube.
-4. Descarta **clipes e comentários** (cena, clipe, featurette, bastidores,
-   entrevista, reação, review) antes de transcrever ou chamar a LLM; a análise
-   também classifica o vídeo em `content_type` e o título de clipe sempre vence.
-5. Analisa se o link anuncia uma obra relevante que ainda vai estrear.
-6. Confere a data e a disponibilidade antes de publicar no Telegram.
+- 🎬 **Quatro categorias:** filmes, séries, jogos e animes.
+- 🔌 **Várias fontes, sem monopólio:** YouTube, Steam, Kitsu e RSS, intercaladas a cada rodada
+  (novas fontes na [proposta](docs/FONTES.md)).
+- 🧠 **Análise com LLM** (qualquer API compatível com OpenAI) e **Hype Score** de 0 a 100.
+- 🚦 **Release gate:** só publica com data futura ou confirmação de que a obra ainda vai estrear.
+- 🧹 **Sem repetição:** dedupe por ID, URL, conteúdo e **mesma obra** (vários trailers → um post).
+- 🗣️ **Transcrição opcional** de trailers via Whisper.
+- 🖥️ **Painel web** + **widget desktop** sempre no topo (Tauri + React).
+- 🔒 **Seguro por padrão:** proteção contra SSRF/XXE/CSRF, API com token fora do localhost.
 
-Uma obra marcada como já lançada, ou com estreia hoje ou no passado, **não é
-publicada**. Para publicar, o bot exige uma data futura ou uma confirmação de
-que a obra ainda está por vir. Sem evidência, guarda o motivo
-`Estreia futura nao confirmada`. Apenas conter “trailer” no título não basta.
+## 🧭 Como funciona
 
-Datas explícitas vindas das fontes têm prioridade sobre a análise. Sem a chave
-da análise, Steam e Kitsu ainda fornecem a indicação de obra futura;
-YouTube e RSS precisam de evidência adicional. Essa regra reduz as postagens
-incertas, mas continua dependendo da qualidade dos metadados e da análise.
+```mermaid
+flowchart LR
+    A[YouTube · Steam · Kitsu · RSS] --> B[Coleta intercalada]
+    B --> C{Já visto?<br/>ID · URL · obra}
+    C -- sim --> X[(descarta)]
+    C -- não --> D[Metadados + transcrição]
+    D --> E{Clipe ou<br/>comentário?}
+    E -- sim --> X
+    E -- não --> F[Análise LLM<br/>+ Hype Score]
+    F --> G{Release gate<br/>estreia futura?}
+    G -- não --> X
+    G -- sim --> H[(PostgreSQL)]
+    H --> I[Telegram]
+    H --> J[Painel web / API]
+    J --> K[App desktop]
+```
 
-> A identificação da obra compara o título (sem "trailer", "teaser", canal e
-> similares) e, depois da análise, o título original informado pela LLM. Títulos
-> muito diferentes para a mesma obra ainda podem passar; artigos e páginas
-> oficiais não entram nessa regra. Publicações antigas ganham a chave
-> automaticamente na próxima inicialização do banco (coluna `work_key`,
-> reversível com `DROP COLUMN`).
+Uma obra já lançada, ou com estreia hoje ou no passado, **não é publicada**. Datas explícitas
+das fontes têm prioridade sobre a análise; sem a chave da LLM, Steam e Kitsu ainda indicam obra
+futura, mas YouTube e RSS precisam de evidência adicional (`Estreia futura nao confirmada`).
 
-## Executar localmente
+## 🚀 Início rápido
 
-Você precisa de Python 3.11+, [uv](https://docs.astral.sh/uv/) e PostgreSQL.
-Para transcrever áudio, também precisa de ffmpeg e de um serviço Whisper.
+Requisitos: Python 3.11+, [uv](https://docs.astral.sh/uv/) e PostgreSQL
+(ffmpeg e um serviço Whisper só para transcrever áudio).
 
-```powershell
+```bash
+git clone https://github.com/juninmd/release-radar.git && cd release-radar
 uv sync --locked
-Copy-Item .env.example .env
+cp .env.example .env        # preencha POSTGRES_*, LLM_* e TELEGRAM_*
+
+uv run release-radar run --dry-run --limit 3   # teste: não grava nem publica
+uv run release-radar run --limit 12            # rodada real
+uv run release-radar web                       # http://127.0.0.1:8765
 ```
 
-Preencha o `.env` com a conexão `POSTGRES_*`. Para analisar links do YouTube e
-artigos, configure `LLM_BASE_URL`, `LLM_MODEL` e `LLM_API_KEY`. Para publicar,
-configure também `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`.
+`--json` devolve o resultado em JSON para automações. O painel escuta só em `localhost`;
+para expor, defina `RELEASE_RADAR_API_TOKEN` e use `--host 0.0.0.0` atrás de HTTPS.
 
-Comece com um teste sem publicação:
+## 🔌 Fontes e configuração
 
-```powershell
-uv run release-radar run --dry-run --limit 3
-```
-
-O teste a seco inicializa as tabelas, mas **não registra os itens, não salva
-análises e não envia mensagens**. Isso preserva a próxima rodada real.
-O resultado explica quantos links foram encontrados, analisados, rejeitados
-por já terem sido lançados ou retidos por falta de confirmação.
-
-Para publicar uma rodada ou abrir o painel:
-
-```powershell
-uv run release-radar run --limit 12
-uv run release-radar web
-```
-
-Abra **http://127.0.0.1:8765**. O painel também inicializa as tabelas quando a
-base ainda estiver vazia. `--port 9000` troca a porta. Ele escuta apenas em
-localhost por padrão; para acesso remoto, configure autenticação no proxy
-antes de usar `--host 0.0.0.0`.
-
-Use `release-radar run --help` para ver os parâmetros ou `--json` para obter
-o resultado em JSON em uma automação.
-
-## Fontes e configuração
-
-| Fonte | Categoria | Configuração | Como funciona |
+| Fonte | Categoria | Variáveis | Observação |
 |---|---|---|---|
-| YouTube | Todas | `YOUTUBE_SOURCES`, `SOURCE_LIMIT` | Canais configurados; única fonte com transcrição de áudio |
-| Steam | Jogos | `STEAM_ENABLED`, `STEAM_LIMIT`, `STEAM_COUNTRY`, `STEAM_LANGUAGE` | Jogos classificados pela loja como “em breve” |
-| Kitsu | Animes | `KITSU_ENABLED`, `KITSU_LIMIT` | Animes classificados como `upcoming` |
-| RSS | Por feed | `RSS_SOURCES`, `RSS_LIMIT` | RSS 2.0, RDF e Atom |
+| YouTube | todas | `YOUTUBE_SOURCES`, `SOURCE_LIMIT` | Canais; única com transcrição de áudio |
+| Steam | jogos | `STEAM_ENABLED`, `STEAM_LIMIT`, `STEAM_COUNTRY`, `STEAM_LANGUAGE` | Jogos "em breve" |
+| Kitsu | animes | `KITSU_ENABLED`, `KITSU_LIMIT` | Animes `upcoming` |
+| RSS / Atom | por feed | `RSS_SOURCES`, `RSS_LIMIT` | RSS 2.0, RDF e Atom |
 
-Use `categoria|endereço` nas listas de fontes, separando entradas por vírgula.
-As categorias aceitas são `movies`, `series`, `games` e `anime`.
-Veja o [.env.example](.env.example) para os demais limites e serviços.
+Listas usam `categoria|endereço` separados por vírgula; categorias: `movies`, `series`,
+`games`, `anime`. Todas as variáveis estão em [`.env.example`](.env.example).
 
-O banco mantém os IDs antigos do YouTube e usa prefixos nas demais fontes:
-`steam:`, `kitsu:` e `rss:`. A inicialização migra bases antigas com a coluna
-`youtube_id` para `external_id` e adiciona `source`, preservando o histórico.
+**Em breve:** TMDB, TVmaze, AniList, Jikan, IGDB e mais — veja a
+[proposta de novas fontes](docs/FONTES.md).
 
-## Testes e validação
+## 🖼️ Telas
 
-```powershell
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest -q
-uv build
+<table>
+  <tr>
+    <td><img src="docs/previews/mobile.png" alt="Painel no celular" width="260"></td>
+    <td><img src="desktop/docs/previews/widget.png" alt="Widget desktop" width="260"></td>
+  </tr>
+  <tr><td align="center">Painel (celular)</td><td align="center">Widget desktop</td></tr>
+</table>
+
+Capturas com dados fictícios, geradas pela UI real. Mais em [docs/ui-preview.md](docs/ui-preview.md).
+
+## 🖥️ App desktop
+
+Janela compacta sempre no topo, bandeja, notificações, atalho global `Ctrl+Shift+R`, skins e
+atualização assinada. Consome a API do painel (não fala direto com banco nem Telegram).
+Detalhes em [desktop/README.md](desktop/README.md).
+
+## 🔗 API
+
+| Rota | Acesso | Descrição |
+|---|---|---|
+| `GET /api/releases` | aberta | 120 links mais recentes publicados |
+| `GET /api/health` | aberta | Saúde do serviço |
+| `POST`/`GET /api/run` | token | Dispara e acompanha uma rodada |
+| `GET`/`PUT /api/settings` | token | Fontes e limites editáveis |
+
+Com `RELEASE_RADAR_API_TOKEN` definido, as rotas protegidas exigem
+`Authorization: Bearer <token>`. Sem token, fora do localhost, respondem `403`
+(`RELEASE_RADAR_ALLOW_ANON=true` libera conscientemente). Tokens do Telegram, chaves da LLM e
+transcrições nunca saem pela API.
+
+## 🐳 Container
+
+A imagem roda sem privilégios (usuário `radar`) e executa uma rodada do bot por padrão.
+Para subir tudo localmente (PostgreSQL + painel em http://127.0.0.1:8765):
+
+```bash
+docker compose up -d db web
+docker compose run --rm bot                       # uma rodada do bot
+docker compose run --rm bot release-radar run --dry-run --verbose
 ```
 
-O painel é escrito em TypeScript (`frontend/src/app.ts`) e compilado para
-`src/release_radar/static/app.js`, que é versionado. Depois de editar o `.ts`:
+Fora do Compose, sirva o painel com `release-radar web --host 0.0.0.0 --port 8765`;
+`GET /healthz` confere o banco e serve de probe de liveness/readiness.
 
-```powershell
-cd frontend
-npm ci
-npm run check   # typecheck, testes (vitest) e build
+## 🛡️ Resiliência e operação
+
+- **Retry com backoff** (exponencial, com jitter e `Retry-After`) em fontes HTTP, Whisper e LLM.
+- **Circuit breaker por rodada:** falhas seguidas do Whisper desligam a transcrição; da LLM
+  interrompem a rodada (`aborted: llm_unavailable`).
+- **Estatísticas por rodada** (`--json` ou log `Run finished`): candidatos e falhas por fonte, tempos.
+- `LOG_FORMAT=json` emite logs JSON, prontos para Loki/Datadog/CloudWatch.
+- **Migrações** versionadas em `src/release_radar/sql/NNNN_nome.sql`, aplicadas na inicialização
+  com advisory lock; nunca edite uma migração já aplicada.
+- **API do painel:** pool de conexões, cache de 15 s (serve o último resultado se o banco cair),
+  limite de requisições por IP (`429` com `Retry-After`), `ETag` nos estáticos.
+
+## 🧪 Desenvolvimento
+
+```bash
+uv run ruff check . && uv run ruff format --check . && uv run mypy
+uv run pytest -q && uv build
 ```
 
-A CI falha se o `app.js` commitado divergir do que o `app.ts` gera.
+O painel é TypeScript (`frontend/src/app.ts`) compilado para `src/release_radar/static/app.js`
+(versionado). Após editar o `.ts`: `cd frontend && npm ci && npm run check`. A CI falha se o
+`app.js` divergir do gerado.
 
-Para testar o navegador, instale o grupo opcional e o Chromium:
+Testes de banco usam `RELEASE_RADAR_TEST_DSN` (schema isolado por teste) ou `pgserver`;
+testes de navegador exigem `uv sync --locked --group browser` e Chromium. Nenhum teste acessa
+fontes externas ou o Telegram. A CI roda lint, formatação, mypy, frontend, testes e build, e a
+imagem só é publicada se tudo passar. Veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```powershell
-uv sync --locked --group browser
-uv run --group browser playwright install chromium
-uv run --group browser pytest tests/test_frontend.py -q
+## 🗂️ Estrutura
+
+```
+src/release_radar/   bot, pipeline, fontes, API e painel web
+  sources/           steam, kitsu, rss
+  sql/               migrações do banco
+frontend/            TypeScript do painel (compila para static/)
+desktop/             app Tauri v2 + React
+scripts/             ferramentas manuais (sondas)
+tests/               pytest (banco, API, fontes, navegador)
+docs/                capturas e proposta de fontes
 ```
 
-Os testes de navegador usam dados fictícios e não acessam fontes nem Telegram.
-Defina `RELEASE_RADAR_SCREENSHOT_DIR` para guardar as capturas. Para usar um
-Chromium já instalado, defina `PLAYWRIGHT_CHROMIUM_EXECUTABLE` com seu caminho.
+## 🔐 Segurança
 
-Os testes de banco aceitam `RELEASE_RADAR_TEST_DSN` e criam um schema isolado
-por teste. Use uma base destinada a testes. Sem essa variável, tentam usar
-`pgserver` quando instalado; sem ambos, os testes de PostgreSQL são pulados.
-Sem o grupo `browser`, os testes de navegador também são pulados.
+Veja [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada.
+Nunca versione `.env`, tokens ou chaves.
 
-A CI do PR executa lint, formatação, `mypy`, o check do frontend (incluindo a
-verificação do `app.js` gerado), testes com PostgreSQL e Chromium, gera o pacote
-distribuível e guarda as capturas da UI como artefato. Cada push na `main` roda
-os mesmos checks antes de publicar a imagem Docker (`docker.yml` reutiliza o
-workflow `build.yml`).
+## 📄 Licença
 
-## Banco de dados e migrações
-
-O esquema é versionado em `src/release_radar/sql/NNNN_nome.sql`. Na inicialização
-(`run` e `web`), as migrações pendentes são aplicadas em ordem, cada uma em sua
-transação e protegidas por um advisory lock, e registradas em `schema_migrations`.
-Para mudar o esquema, crie o próximo arquivo numerado (nunca edite um já aplicado).
-As migrações iniciais são idempotentes e adotam bases criadas antes do runner.
-
-## Resiliência e observabilidade
-
-- **Retry com backoff** (exponencial, com jitter e respeito a `Retry-After`) nas
-  fontes HTTP (Steam, Kitsu, RSS), no Whisper e na LLM. Só falhas transitórias
-  (rede, timeout, 429 e 5xx) são repetidas.
-- **Circuit breaker por rodada:** três falhas seguidas do Whisper/download
-  desligam a transcrição pelo resto da rodada; três falhas seguidas da LLM
-  interrompem a rodada (`aborted: llm_unavailable`) em vez de marcar vários
-  itens como falhos.
-- **Estatísticas por rodada** (`--json` ou o log `Run finished`): candidatos por
-  fonte, falhas por fonte (`source_errors`), transcrições, tempo total e tempo na LLM.
-- `LOG_FORMAT=json` emite uma linha JSON por log (stderr), pronta para
-  Loki/Datadog/CloudWatch; o padrão continua legível no terminal.
-
-## Painel (API)
-
-`GET /api/releases` usa um pool de conexões, cache de 15 s (com *single-flight*;
-se o banco cair, serve o último resultado por até 5 min), limite de requisições
-por IP (60 de rajada, 2/s; responde `429` com `Retry-After`) e leitura paginada
-até completar os 120 itens mesmo com muitos clipes ocultos. Os arquivos
-estáticos usam `ETag` e `Cache-Control: no-cache` (um deploy novo aparece na
-hora e, sem mudança, o navegador recebe `304`). `GET /healthz` confere o banco
-(`/api/health` só indica que o processo está de pé). A leitura é pública; as
-rotas de escrita exigem `RELEASE_RADAR_API_TOKEN` fora do localhost. Por trás de
-proxy, o limite de requisições vale por IP do proxy.
-
-## Container e cluster
-
-A imagem existente é `ghcr.io/juninmd/release-radar:latest`. Ela roda sem
-privilégios (usuário `radar`), com a versão do `uv` fixada. O comando padrão
-executa uma rodada do bot. Para servir o painel em outro processo/container,
-use `release-radar web --host 0.0.0.0 --port 8765`, com as mesmas variáveis de
-conexão ao PostgreSQL; `GET /healthz` serve de probe de liveness/readiness.
-
-Para rodar tudo localmente, o `docker-compose.yml` sobe PostgreSQL e painel
-(`docker compose up -d db web`, em http://127.0.0.1:8765) e roda uma rodada do
-bot sob demanda (`docker compose run --rm bot`).
-
-O painel expõe: `GET /api/releases` (os links publicados, aberto),
-`GET /api/health`, `POST`/`GET /api/run` (dispara e acompanha uma rodada) e
-`GET`/`PUT /api/settings` (fontes e limites). Com `RELEASE_RADAR_API_TOKEN`
-definido, tudo menos `/api/releases` e `/api/health` exige
-`Authorization: Bearer <token>`; sem o token, fora de `localhost` essas rotas de
-escrita respondem 403 (use `RELEASE_RADAR_ALLOW_ANON=true` para liberar). Os
-ajustes salvos ficam na tabela `radar_settings` e sobrescrevem apenas as fontes e
-limites permitidos.
-
-Os valores padrão dos serviços internos estão no [.env.example](.env.example).
-O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.
+[MIT](LICENSE).
