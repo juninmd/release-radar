@@ -27,6 +27,21 @@ tem dados suficientes para determinar a disponibilidade atual.
 As capturas de [desktop, celular e outros estados](docs/UI_PREVIEW.md) usam
 dados fictícios e mostram a interface real executada em Chromium.
 
+## App desktop
+
+Há também um app de desktop em [`desktop/`](desktop/README.md) (Tauri v2 +
+React): uma janela compacta sempre no topo, com ícone na bandeja, notificações de
+novidades, atalho global `Ctrl+Shift+R`, skins e atualização assinada. Ele
+**consome a API publicada** pelo painel — não fala com o PostgreSQL nem com o
+Telegram — e permite disparar uma rodada do bot e ajustar fontes e limites pela
+própria interface. O painel web continua igual.
+
+Para servir essa API em rede, defina `RELEASE_RADAR_API_TOKEN` e suba o painel
+com `--host 0.0.0.0` (veja [.env.example](.env.example) e
+[desktop/README.md](desktop/README.md)). Sem o token, uma exposição fora de
+`localhost` passa a recusar `/api/run` e `/api/settings` com 403 até que você
+defina o token ou `RELEASE_RADAR_ALLOW_ANON=true`.
+
 ## Como o bot decide o que publicar
 
 1. Coleta links das fontes configuradas, alternando as fontes para que nenhuma monopolize a rodada.
@@ -149,6 +164,15 @@ A imagem existente é `ghcr.io/juninmd/release-radar:latest`. O comando padrão
 executa uma rodada do bot. Para servir o painel em outro processo/container,
 use `uv run release-radar web --host 0.0.0.0 --port 8765`, com as mesmas
 variáveis de conexão ao PostgreSQL.
+
+O painel expõe: `GET /api/releases` (os links publicados, aberto),
+`GET /api/health`, `POST`/`GET /api/run` (dispara e acompanha uma rodada) e
+`GET`/`PUT /api/settings` (fontes e limites). Com `RELEASE_RADAR_API_TOKEN`
+definido, tudo menos `/api/releases` e `/api/health` exige
+`Authorization: Bearer <token>`; sem o token, fora de `localhost` essas rotas de
+escrita respondem 403 (use `RELEASE_RADAR_ALLOW_ANON=true` para liberar). Os
+ajustes salvos ficam na tabela `radar_settings` e sobrescrevem apenas as fontes e
+limites permitidos.
 
 Os valores padrão dos serviços internos estão no [.env.example](.env.example).
 O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.

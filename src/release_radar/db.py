@@ -82,6 +82,13 @@ def init_db(dsn: str) -> None:
                     created_at TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS radar_settings (
+                    key TEXT PRIMARY KEY,
+                    value JSONB NOT NULL,
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """)
             cur.execute(
                 "ALTER TABLE release_items "
                 "ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'youtube'"
