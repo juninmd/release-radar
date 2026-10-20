@@ -1,7 +1,7 @@
 """Barreira contra SSRF: so hosts publicos podem ser buscados pelo radar.
 
 As fontes RSS sao editaveis pelo painel; sem esta barreira, um ajuste poderia
-fazer o servidor buscar metadados de nuvem ou servicos internos do cluster.
+fazer o servidor buscar metadados de nuvem ou servicos internos da rede privada.
 O mesmo checador roda na gravacao dos ajustes e a cada salto de redirect.
 """
 

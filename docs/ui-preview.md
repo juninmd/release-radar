@@ -24,7 +24,7 @@ O painel separa os destinos com os filtros `YouTube`, `Artigos` e `Páginas ofic
 
 ## Captura da API
 
-O endpoint real foi executado contra o PostgreSQL isolado `radar_test` do container de validação, usando um schema temporário exclusivo que foi removido ao final. Os registros usados são fictícios e foram publicados apenas nesse banco de validação.
+O endpoint real foi executado contra o PostgreSQL isolado de testes, usando um schema temporário exclusivo que foi removido ao final. Os registros usados são fictícios e foram publicados apenas nesse banco de validação.
 
 - [GET /api/releases — 200](previews/api-example.json)
 - [GET /api/releases — 503](previews/api-error-example.json)
@@ -36,7 +36,7 @@ O retorno aplica o limite de 120 itens e entrega somente itens com status `poste
 Os comandos abaixo foram executados com as fontes YouTube/RSS vazias, Steam/Kitsu desativados, tokens vazios e conexão apontando somente para o PostgreSQL isolado de validação. Nenhuma fonte externa ou Telegram foi chamado.
 
 ```console
-$ .venv\Scripts\release-radar.exe --help
+$ release-radar --help
 usage: release-radar [-h] {run,web} ...
 
 positional arguments:
@@ -49,7 +49,7 @@ options:
 ```
 
 ```console
-$ .venv\Scripts\release-radar.exe run --dry-run --limit 3
+$ release-radar run --dry-run --limit 3
 [09/30/26 01:18:59] INFO     Discovered 0 candidates             pipeline.py:69
       Resultado da busca · teste a seco
 │ Resultado                     │ Quantidade │
@@ -66,7 +66,7 @@ $ .venv\Scripts\release-radar.exe run --dry-run --limit 3
 ```
 
 ```console
-$ .venv\Scripts\release-radar.exe run --dry-run --limit 3 --json
+$ release-radar run --dry-run --limit 3 --json
 [09/30/26 01:19:00] INFO     Discovered 0 candidates             pipeline.py:69
 {"discovered": 0, "reserved": 0, "analyzed": 0, "posted": 0, "skipped_existing": 0, "skipped_not_release": 0, "skipped_released": 0, "skipped_unconfirmed": 0, "failed": 0}
 ```

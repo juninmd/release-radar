@@ -2,7 +2,7 @@
 
 App de desktop (Tauri v2 + React) que mostra as novidades do radar em uma janela
 compacta, sempre no topo, com ícone na bandeja, notificações e atalho global.
-**Ele consome a API publicada pelo seu cluster** — não fala com o PostgreSQL nem
+**Ele consome a API publicada pelo seu servidor** — não fala com o PostgreSQL nem
 com o Telegram, e o token de acesso nunca chega ao webview: só o processo Rust
 conversa com a rede.
 
@@ -21,7 +21,7 @@ de olhar os mesmos dados.
   `Ctrl+Alt+R`, e mostra qual ficou ativo.
 - **Notificações:** ao detectar links novos, avisa pelo sistema e marca um sino
   no cabeçalho com a lista de novidades.
-- **Rodada do bot:** "Buscar novidades agora" dispara o pipeline no cluster e
+- **Rodada do bot:** "Buscar novidades agora" dispara o pipeline no servidor e
   acompanha o resultado (encontrados, analisados, publicados…).
 - **Fontes e limites:** edita os ajustes que a API expõe (canais, feeds, limites,
   Steam/Kitsu) sem mexer no `.env`.
@@ -38,7 +38,7 @@ de olhar os mesmos dados.
 
 ## Configurar a API
 
-No cluster, sirva a API e defina um token antes de expô-la:
+No servidor, sirva a API e defina um token antes de expô-la:
 
 ```bash
 export RELEASE_RADAR_API_TOKEN="um-segredo-longo"
@@ -54,7 +54,7 @@ No app, abra **Ajustes → Conexão e app** e informe o endereço
 (ex.: `https://radar.exemplo.com`) e o token. Use **Testar conexão** para
 confirmar.
 
-## Testar sem um cluster
+## Testar sem um servidor
 
 Há um script que sobe um PostgreSQL efêmero, semeia lançamentos fictícios e
 serve a API em `http://127.0.0.1:8765` (sem fontes externas, sem Telegram):
