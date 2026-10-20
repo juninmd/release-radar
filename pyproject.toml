@@ -15,12 +15,6 @@ dependencies = [
     "yt-dlp>=2026.8.19",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.8",
-]
-
 [project.scripts]
 release-radar = "release_radar.cli:main"
 
@@ -41,9 +35,27 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Sem stubs de tipo publicados.
+module = ["yt_dlp", "yt_dlp.*", "psycopg2", "psycopg2.*"]
+ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E501"]
+
 [dependency-groups]
 browser = ["playwright==1.63.0"]
 dev = [
+    "mypy>=1.13",
     "pytest>=8.0",
     "ruff>=0.15.15",
 ]

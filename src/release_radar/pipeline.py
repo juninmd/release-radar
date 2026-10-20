@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import asdict, dataclass, field
 
 import psycopg2
-from rich.console import Console
-from rich.logging import RichHandler
 
 from .analyzer import analyze_release
 from .config import Settings
@@ -23,8 +22,10 @@ from .db import (
 from .dedupe import analysis_keys, candidate_keys, work_already_posted
 from .fingerprint import content_hash
 from .links import link_kind
+from .logging_setup import configure_logging
 from .models import ReleaseCandidate
 from .release_policy import already_released, confirmed_upcoming, is_not_trailer
+from .resilience import CircuitBreaker
 from .settings_store import effective_settings, read_overrides
 from .sources import discover_extra_sources
 from .telegram_bot import TelegramPublisher
@@ -50,14 +51,20 @@ class RunStats:
     skipped_clip: int = 0
     skipped_duplicate: int = 0
     failed: int = 0
+    # Observabilidade: onde a rodada gastou tempo e qual fonte esta falhando.
+    candidates_by_source: dict[str, int] = field(default_factory=dict)
+    source_errors: dict[str, int] = field(default_factory=dict)
+    transcribed: int = 0
+    transcription_failed: int = 0
+    llm_seconds: float = 0.0
+    duration_seconds: float = 0.0
+    aborted: str = ""
+
+    def record_source_error(self, source: str, exc: Exception | None = None) -> None:
+        self.source_errors[source] = self.source_errors.get(source, 0) + 1
 
 
-def configure_logging(verbose: bool = False) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(message)s",
-        handlers=[RichHandler(console=Console(stderr=True), rich_tracebacks=True)],
-    )
+__all__ = ["RunStats", "configure_logging", "discover", "run_pipeline", "run_sync"]
 
 
 async def run_pipeline(
@@ -76,13 +83,25 @@ async def run_pipeline(
         conn.rollback()
     publisher = TelegramPublisher(settings.telegram_bot_token, settings.telegram_chat_id)
     stats = RunStats()
+    started = time.monotonic()
     max_items = limit or settings.max_items_per_run
+    # Servicos externos fora do ar: depois de falhas seguidas, para de gastar timeout por item.
+    llm_breaker = CircuitBreaker("llm", threshold=3, cooldown=300.0)
+    whisper_breaker = CircuitBreaker("transcription", threshold=3, cooldown=300.0)
     try:
-        candidates = discover(settings)
+        candidates = discover(settings, stats)
         stats.discovered = len(candidates)
+        for candidate in candidates:
+            stats.candidates_by_source[candidate.source] = (
+                stats.candidates_by_source.get(candidate.source, 0) + 1
+            )
         logger.info("Discovered %s candidates", stats.discovered)
         for candidate in candidates:
             if stats.analyzed >= max_items:
+                break
+            if llm_breaker.is_open:
+                stats.aborted = "llm_unavailable"
+                logger.error("LLM unavailable; stopping the run to avoid burning candidates")
                 break
             # Antes do enrich: evita uma ida ao yt-dlp para um item que ja conhecemos.
             if get_item(conn, candidate.external_id):
@@ -113,15 +132,23 @@ async def run_pipeline(
                 stats.skipped_duplicate += 1
                 continue
             try:
-                transcript = maybe_transcribe(settings, enriched)
-                analysis = analyze_release(
-                    candidate=enriched,
-                    transcript=transcript,
-                    base_url=settings.llm_base_url,
-                    api_key=settings.llm_api_key,
-                    model=settings.llm_model,
-                    timeout=settings.llm_timeout,
-                )
+                transcript = maybe_transcribe(settings, enriched, whisper_breaker, stats)
+                llm_started = time.monotonic()
+                try:
+                    analysis = analyze_release(
+                        candidate=enriched,
+                        transcript=transcript,
+                        base_url=settings.llm_base_url,
+                        api_key=settings.llm_api_key,
+                        model=settings.llm_model,
+                        timeout=settings.llm_timeout,
+                    )
+                except Exception:
+                    llm_breaker.record_failure()
+                    raise
+                finally:
+                    stats.llm_seconds += time.monotonic() - llm_started
+                llm_breaker.record_success()
                 work_keys = analysis_keys(enriched, analysis)
                 if not dry_run:
                     save_analysis(
@@ -162,6 +189,9 @@ async def run_pipeline(
                     mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
     finally:
         conn.close()
+        stats.duration_seconds = round(time.monotonic() - started, 2)
+        stats.llm_seconds = round(stats.llm_seconds, 2)
+        logger.info("Run finished", extra={"event": "run_summary", **asdict(stats)})
     return stats
 
 
@@ -172,8 +202,9 @@ def skip(
         mark_skipped(conn, external_id, reason)
 
 
-def discover(settings: Settings) -> list[ReleaseCandidate]:
-    candidates: list[ReleaseCandidate] = list(discover_extra_sources(settings))
+def discover(settings: Settings, stats: RunStats | None = None) -> list[ReleaseCandidate]:
+    on_error = stats.record_source_error if stats else None
+    candidates: list[ReleaseCandidate] = list(discover_extra_sources(settings, on_error))
     for category, channel in settings.parsed_sources:
         candidates.extend(
             get_channel_candidates(
@@ -182,6 +213,7 @@ def discover(settings: Settings) -> list[ReleaseCandidate]:
                 limit=settings.source_limit,
                 max_duration=max(settings.max_transcription_seconds * 2, 900),
                 extra_opts=settings.yt_dlp_opts,
+                on_error=on_error,
             )
         )
     return interleave_by_source(candidates)
@@ -208,7 +240,12 @@ def interleave_by_source(candidates: list[ReleaseCandidate]) -> list[ReleaseCand
     return ordered
 
 
-def maybe_transcribe(settings: Settings, candidate: ReleaseCandidate) -> str:
+def maybe_transcribe(
+    settings: Settings,
+    candidate: ReleaseCandidate,
+    breaker: CircuitBreaker | None = None,
+    stats: RunStats | None = None,
+) -> str:
     if not settings.analyze_video_content:
         return ""
     # Fontes sem video proprio (Steam, Kitsu, RSS) seguem so com metadados.
@@ -216,15 +253,28 @@ def maybe_transcribe(settings: Settings, candidate: ReleaseCandidate) -> str:
         return ""
     if candidate.duration > settings.max_transcription_seconds:
         return ""
+    if breaker and breaker.is_open:
+        return ""
     try:
         audio_path = download_audio(candidate, settings.audio_dir)
-        return transcribe_audio(audio_path, settings.whisper_base_url, settings.whisper_timeout)
+        transcript = transcribe_audio(
+            audio_path, settings.whisper_base_url, settings.whisper_timeout
+        )
     except Exception:
+        if breaker:
+            breaker.record_failure()
+        if stats:
+            stats.transcription_failed += 1
         logger.exception(
             "Transcription failed for %s; continuing with metadata only",
             candidate.external_id,
         )
         return ""
+    if breaker:
+        breaker.record_success()
+    if stats:
+        stats.transcribed += 1
+    return transcript
 
 
 def run_sync(

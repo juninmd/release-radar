@@ -8,6 +8,7 @@ import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
 from .dedupe import backfill_work_keys
+from .migrations import apply_migrations
 from .models import ReleaseAnalysis, ReleaseCandidate
 
 
@@ -17,98 +18,10 @@ def get_connection(dsn: str) -> psycopg2.extensions.connection:
     return conn
 
 
-# Renomeia youtube_id -> external_id em bases criadas antes das fontes nao-YouTube.
-# Reversivel: ALTER TABLE ... RENAME COLUMN external_id TO youtube_id.
-_MIGRATIONS = """
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = 'release_items' AND column_name = 'youtube_id'
-    ) THEN
-        ALTER TABLE release_items RENAME COLUMN youtube_id TO external_id;
-    END IF;
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = 'release_events' AND column_name = 'youtube_id'
-    ) THEN
-        ALTER TABLE release_events RENAME COLUMN youtube_id TO external_id;
-    END IF;
-END $$;
-
--- Sem isto o indice antigo sobrevive ao rename e o CREATE INDEX abaixo duplicaria.
-ALTER INDEX IF EXISTS idx_release_events_youtube_id RENAME TO idx_release_events_external_id;
-"""
-
-
 def init_db(dsn: str) -> None:
     conn = get_connection(dsn)
     try:
-        with conn.cursor() as cur:
-            cur.execute(_MIGRATIONS)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS release_items (
-                    id BIGSERIAL PRIMARY KEY,
-                    external_id TEXT NOT NULL UNIQUE,
-                    source TEXT NOT NULL DEFAULT 'youtube',
-                    content_hash TEXT NOT NULL UNIQUE,
-                    title TEXT NOT NULL,
-                    url TEXT NOT NULL UNIQUE,
-                    channel TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    duration INTEGER NOT NULL DEFAULT 0,
-                    upload_date TEXT,
-                    thumbnail TEXT,
-                    description TEXT DEFAULT '',
-                    transcript TEXT DEFAULT '',
-                    analysis JSONB DEFAULT '{}'::jsonb,
-                    analysis_summary TEXT DEFAULT '',
-                    is_release_signal BOOLEAN DEFAULT FALSE,
-                    status TEXT NOT NULL DEFAULT 'discovered',
-                    posted_at TIMESTAMP,
-                    skipped_reason TEXT DEFAULT '',
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS release_events (
-                    id BIGSERIAL PRIMARY KEY,
-                    external_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    detail JSONB DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS radar_settings (
-                    key TEXT PRIMARY KEY,
-                    value JSONB NOT NULL,
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-            """)
-            cur.execute(
-                "ALTER TABLE release_items "
-                "ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'youtube'"
-            )
-            # Reversivel: DROP INDEX idx_release_items_work_key + DROP COLUMN work_key.
-            cur.execute("ALTER TABLE release_items ADD COLUMN IF NOT EXISTS work_key TEXT")
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_release_items_work_key ON release_items(work_key)"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_release_items_status ON release_items(status)"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_release_items_category ON release_items(category)"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_release_events_external_id "
-                "ON release_events(external_id)"
-            )
-        conn.commit()
+        apply_migrations(conn)
         backfill_work_keys(conn)
     finally:
         conn.close()

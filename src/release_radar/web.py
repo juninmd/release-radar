@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
+import math
 from datetime import UTC, date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +26,7 @@ from .settings_store import (
     read_overrides,
     write_overrides,
 )
+from .web_support import Database, RateLimiter, TTLCache
 from .work_identity import classify_video_title
 
 STATIC = Path(__file__).with_name("static")
@@ -36,13 +39,15 @@ MAX_BODY_BYTES = 64 * 1024
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 ROUTES: dict[str, set[str]] = {
     "/api/health": {"GET"},
+    "/healthz": {"GET"},
     "/api/releases": {"GET"},
     "/api/run": {"GET", "POST"},
     "/api/settings": {"GET", "PUT"},
 }
 logger = logging.getLogger(__name__)
-# Linhas extras para que ocultar clipes e repetidos ainda deixe `limit` itens visiveis.
-OVERFETCH = 4
+# Ocultar clipes e repetidos exige ler alem de `limit`; le em lotes ate completar a lista.
+BATCH_SIZE = 240
+MAX_SCANNED_ROWS = 5000
 TRAILER_TYPES = {"trailer", "teaser", "announcement"}
 
 
@@ -55,55 +60,77 @@ class ApiError(Exception):
         self.message = message
 
 
-def list_releases(dsn: str, limit: int = 120) -> list[dict]:
-    conn = get_connection(dsn)
+def list_releases(dsn: str | Database, limit: int = 120) -> list[dict]:
+    db = dsn if isinstance(dsn, Database) else Database(dsn, maxconn=1)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """SELECT external_id, source, title, url, channel, category, thumbnail,
-                          analysis, analysis_summary, posted_at, work_key
-                   FROM release_items WHERE status = 'posted'
-                   ORDER BY posted_at DESC, id DESC LIMIT %s""",
-                (limit * OVERFETCH,),
-            )
-            rows = cur.fetchall()
+        items: list[dict] = []
+        seen_works: set[str] = set()
+        cursor: tuple[object, int] | None = None
+        scanned = 0
+        while len(items) < limit and scanned < MAX_SCANNED_ROWS:
+            rows = fetch_batch(db, cursor)
+            if not rows:
+                break
+            scanned += len(rows)
+            for row in rows:
+                if len(items) >= limit:
+                    break
+                item = to_item(row, seen_works)
+                if item:
+                    items.append(item)
+            last = rows[-1]
+            if len(rows) < BATCH_SIZE or last["posted_at"] is None:
+                break
+            cursor = (last["posted_at"], last["id"])
+        return items
     finally:
-        conn.close()
-    items = []
-    seen_works: set[str] = set()
-    for row in rows:
-        analysis = row["analysis"] if isinstance(row["analysis"], dict) else {}
-        kind = link_kind(row["url"], row["source"])
-        content_type = video_content_type(kind, row["title"], analysis)
-        if content_type == "clip" or (kind == "video" and not_new_work(row, seen_works)):
-            continue
-        posted = row["posted_at"]
-        items.append(
-            {
-                "id": row["external_id"],
-                "source": row["source"],
-                "kind": kind,
-                "content_type": content_type,
-                "title": analysis.get("title") or row["title"],
-                "url": row["url"],
-                "channel": row["channel"],
-                "category": row["category"],
-                "thumbnail": row["thumbnail"],
-                "summary": analysis.get("synopsis") or row["analysis_summary"] or "",
-                "release_window": analysis.get("release_window") or "A definir",
-                "release_date": str(analysis.get("release_date") or ""),
-                "availability": release_state(
-                    str(analysis.get("release_date") or ""),
-                    str(analysis.get("release_status") or "unknown"),
-                ),
-                "why_it_matters": analysis.get("why_it_matters") or "",
-                "platforms": analysis.get("platforms")
-                if isinstance(analysis.get("platforms"), list)
-                else [],
-                "posted_at": posted_at_utc(posted),
-            }
+        if db is not dsn:
+            db.close()
+
+
+def fetch_batch(db: Database, cursor: tuple[object, int] | None) -> list[dict]:
+    """Proxima pagina (keyset) das publicacoes, da mais recente para a mais antiga."""
+    after = "AND (posted_at, id) < (%s, %s)" if cursor else ""
+    with db.connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            f"""SELECT id, external_id, source, title, url, channel, category, thumbnail,
+                       analysis, analysis_summary, posted_at, work_key
+                FROM release_items WHERE status = 'posted' AND posted_at IS NOT NULL {after}
+                ORDER BY posted_at DESC, id DESC LIMIT %s""",
+            (*(cursor or ()), BATCH_SIZE),
         )
-    return items[:limit]
+        return cur.fetchall()
+
+
+def to_item(row: dict, seen_works: set[str]) -> dict | None:
+    analysis = row["analysis"] if isinstance(row["analysis"], dict) else {}
+    kind = link_kind(row["url"], row["source"])
+    content_type = video_content_type(kind, row["title"], analysis)
+    if content_type == "clip" or (kind == "video" and not_new_work(row, seen_works)):
+        return None
+    return {
+        "id": row["external_id"],
+        "source": row["source"],
+        "kind": kind,
+        "content_type": content_type,
+        "title": analysis.get("title") or row["title"],
+        "url": row["url"],
+        "channel": row["channel"],
+        "category": row["category"],
+        "thumbnail": row["thumbnail"],
+        "summary": analysis.get("synopsis") or row["analysis_summary"] or "",
+        "release_window": analysis.get("release_window") or "A definir",
+        "release_date": str(analysis.get("release_date") or ""),
+        "availability": release_state(
+            str(analysis.get("release_date") or ""),
+            str(analysis.get("release_status") or "unknown"),
+        ),
+        "why_it_matters": analysis.get("why_it_matters") or "",
+        "platforms": analysis.get("platforms")
+        if isinstance(analysis.get("platforms"), list)
+        else [],
+        "posted_at": posted_at_utc(row["posted_at"]),
+    }
 
 
 def posted_at_utc(posted: object) -> str | None:
@@ -151,9 +178,16 @@ def create_server(
     settings: Settings | None = None,
     token: str = "",
     allow_anonymous_writes: bool = False,
+    *,
+    cache_ttl: float = 15.0,
+    rate_burst: int = 60,
+    rate_per_second: float = 2.0,
 ) -> ThreadingHTTPServer:
     base_settings = settings or get_settings()
     job = RunJob()
+    db = Database(dsn)
+    cache: TTLCache[list[dict]] = TTLCache(ttl=cache_ttl)
+    limiter = RateLimiter(burst=rate_burst, per_second=rate_per_second)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ReleaseRadar"
@@ -181,12 +215,15 @@ def create_server(
 
         def _dispatch(self, method: str) -> None:
             path = urlsplit(self.path).path
+            self.extra_headers: dict[str, str] = {}
             try:
                 if path in ROUTES:
                     if method not in ROUTES[path]:
                         self._json(405, {"error": "Metodo nao permitido para esta rota."})
                     elif path == "/api/health":
                         self._json(200, {"status": "ok", "service": "release-radar"})
+                    elif path == "/healthz":
+                        self._ready()
                     elif path == "/api/releases":
                         self._json(200, {"items": self._releases()})
                     elif path == "/api/run":
@@ -212,11 +249,23 @@ def create_server(
                 self._json(500, {"error": "Falha inesperada."})
 
         def _releases(self) -> list[dict]:
+            wait = limiter.acquire(self.client_address[0])
+            if wait:
+                self.extra_headers["Retry-After"] = str(max(1, math.ceil(wait)))
+                raise ApiError(429, "Muitas requisicoes. Tente novamente em instantes.")
             try:
-                return list_releases(dsn)
+                return cache.get_or_load("releases", lambda: list_releases(db))
             except Exception:
                 logger.exception("Failed to load releases")
                 raise ApiError(503, "Nao foi possivel carregar os lancamentos.") from None
+
+        def _ready(self) -> None:
+            try:
+                db.ping()
+            except Exception:
+                logger.exception("Health check failed")
+                raise ApiError(503, "Banco indisponivel.") from None
+            self._json(200, {"status": "ok"})
 
         def _require_token(self) -> None:
             if token:
@@ -295,10 +344,16 @@ def create_server(
         def _send_file(self, path: str) -> None:
             filename, mime = FILES[path]
             body = (STATIC / filename).read_bytes()
-            self.send_response(200)
+            etag = f'"{hashlib.sha256(body).hexdigest()[:16]}"'
+            not_modified = etag in (self.headers.get("If-None-Match") or "").split(", ")
+            self.send_response(304 if not_modified else 200)
             self.send_header("Content-Type", f"{mime}; charset=utf-8")
-            self.send_header("Cache-Control", "public, max-age=300")
-            self._finish_headers(body, csp=True)
+            # Revalida a cada uso: um deploy novo aparece na hora; sem mudanca, vem 304.
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("ETag", etag)
+            self._finish_headers(
+                b"" if not_modified else body, csp=True, send_body=not not_modified
+            )
 
         def _error(self, status: int) -> None:
             self.send_error(status)
@@ -310,7 +365,9 @@ def create_server(
             self.send_header("Cache-Control", "no-store")
             self._finish_headers(body, csp=True)
 
-        def _finish_headers(self, body: bytes, *, csp: bool) -> None:
+        def _finish_headers(self, body: bytes, *, csp: bool, send_body: bool = True) -> None:
+            for name, value in self.extra_headers.items():
+                self.send_header(name, value)
             self.send_header("X-Content-Type-Options", "nosniff")
             if csp:
                 self.send_header(
@@ -319,14 +376,25 @@ def create_server(
                     "script-src 'self'; style-src 'self'; connect-src 'self'; "
                     "base-uri 'none'; frame-ancestors 'none'",
                 )
-            self.send_header("Content-Length", str(len(body)))
+            if send_body:
+                self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            if send_body:
+                self.wfile.write(body)
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             logger.info("%s - %s", self.address_string(), format % args)
 
-    return ThreadingHTTPServer((host, port), Handler)
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.daemon_threads = True
+    original_close = server.server_close
+
+    def close() -> None:
+        original_close()
+        db.close()
+
+    server.server_close = close  # type: ignore[method-assign]
+    return server
 
 
 def serve(dsn: str, host: str = "127.0.0.1", port: int = 8765) -> None:

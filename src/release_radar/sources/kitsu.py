@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from ..models import ReleaseCandidate
+from ..resilience import get_json
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ ANIME_URL = "https://kitsu.io/api/edge/anime"
 
 def fetch_kitsu(client: httpx.Client, limit: int) -> list[ReleaseCandidate]:
     """Animes anunciados/aguardados no Kitsu, ordenados por audiencia (sem API key)."""
-    response = client.get(
+    payload = get_json(
+        client,
         ANIME_URL,
         params={
             "filter[status]": "upcoming",
@@ -23,9 +25,8 @@ def fetch_kitsu(client: httpx.Client, limit: int) -> list[ReleaseCandidate]:
         },
         headers={"Accept": "application/vnd.api+json"},
     )
-    response.raise_for_status()
     candidates: list[ReleaseCandidate] = []
-    for entry in response.json().get("data", []):
+    for entry in payload.get("data", []):
         candidate = _to_candidate(entry)
         if candidate is not None:
             candidates.append(candidate)
@@ -39,9 +40,7 @@ def _to_candidate(entry: dict[str, Any]) -> ReleaseCandidate | None:
     if not anime_id or not slug:
         return None
     titles: dict[str, Any] = attributes.get("titles") or {}
-    title = str(
-        titles.get("en") or attributes.get("canonicalTitle") or titles.get("en_jp") or slug
-    )
+    title = str(titles.get("en") or attributes.get("canonicalTitle") or titles.get("en_jp") or slug)
     poster: dict[str, Any] = attributes.get("posterImage") or {}
     return ReleaseCandidate(
         external_id=f"kitsu:{anime_id}",

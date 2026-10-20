@@ -1,0 +1,63 @@
+# Desenvolvimento/self-hosting local:
+#   docker compose up -d db web          # painel em http://127.0.0.1:8765
+#   docker compose run --rm bot          # uma rodada do bot (agende com cron/systemd timer)
+#   docker compose run --rm bot release-radar run --dry-run --verbose
+x-radar-env: &radar-env
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    POSTGRES_HOST: db
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: release_radar
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radar_local}
+
+services:
+  db:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: release_radar
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radar_local}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d release_radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build: .
+    <<: *radar-env
+    command: ["release-radar", "web", "--host", "0.0.0.0", "--port", "8765"]
+    ports:
+      # Sem autenticacao: exponha so atras de um proxy com auth se sair da maquina local.
+      - "127.0.0.1:8765:8765"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  bot:
+    build: .
+    <<: *radar-env
+    profiles: ["run"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

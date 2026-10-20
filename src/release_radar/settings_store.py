@@ -113,9 +113,7 @@ def read_overrides(conn: psycopg2.extensions.connection) -> dict[str, Any]:
     return {row["key"]: row["value"] for row in rows if row["key"] in EDITABLE_FIELDS}
 
 
-def write_overrides(
-    conn: psycopg2.extensions.connection, values: dict[str, Any]
-) -> dict[str, Any]:
+def write_overrides(conn: psycopg2.extensions.connection, values: dict[str, Any]) -> dict[str, Any]:
     validated = validate(values)
     with conn.cursor() as cur:
         for field, value in validated.items():

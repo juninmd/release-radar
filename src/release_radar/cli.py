@@ -11,7 +11,8 @@ from rich.table import Table
 
 from .config import get_settings
 from .db import init_db
-from .pipeline import configure_logging, run_sync
+from .logging_setup import configure_logging
+from .pipeline import run_sync
 
 
 def main() -> None:
@@ -39,7 +40,7 @@ def main() -> None:
         if args.port > 65535:
             parser.error("a porta deve estar entre 1 e 65535")
         # Sem isto os logs de acesso e os avisos de exposicao nao aparecem.
-        configure_logging(verbose=args.verbose)
+        configure_logging(verbose=args.verbose, json_logs=get_settings().json_logs)
         dsn = get_settings().postgres_dsn
         try:
             init_db(dsn)
@@ -52,8 +53,9 @@ def main() -> None:
         parser.print_help()
         return
 
-    configure_logging(verbose=args.verbose)
-    stats = run_sync(get_settings(), limit=args.limit, dry_run=args.dry_run)
+    settings = get_settings()
+    configure_logging(verbose=args.verbose, json_logs=settings.json_logs)
+    stats = run_sync(settings, limit=args.limit, dry_run=args.dry_run)
     if args.json:
         print(json.dumps(asdict(stats), ensure_ascii=False))
         return
@@ -75,6 +77,11 @@ def main() -> None:
     }
     for key, label in labels.items():
         table.add_row(label, str(getattr(stats, key)))
+    for source, errors in sorted(stats.source_errors.items()):
+        table.add_row(f"Falhas na fonte {source}", str(errors))
+    table.caption = f"{stats.duration_seconds:.1f}s no total, {stats.llm_seconds:.1f}s na análise"
+    if stats.aborted:
+        table.caption += f" · rodada interrompida: {stats.aborted}"
     Console().print(table)
 
 

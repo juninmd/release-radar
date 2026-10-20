@@ -61,7 +61,7 @@ def radar(postgres_dsn: str, monkeypatch):
     def run(*candidates: ReleaseCandidate, analyze_with=None):
         if analyze_with:
             monkeypatch.setattr(pipeline, "analyze_release", analyze_with)
-        monkeypatch.setattr(pipeline, "discover", lambda _settings: list(candidates))
+        monkeypatch.setattr(pipeline, "discover", lambda *_a: list(candidates))
         settings = Settings(_env_file=None)
         monkeypatch.setattr(Settings, "postgres_dsn", property(lambda _self: postgres_dsn))
         return asyncio.run(pipeline.run_pipeline(settings))
@@ -198,3 +198,44 @@ def test_posted_at_is_exposed_with_an_explicit_offset() -> None:
     from release_radar.web import posted_at_utc
 
     assert posted_at_utc(datetime(2026, 10, 18, 3, 0)) == "2026-10-18T03:00:00+00:00"
+
+
+def test_run_stops_after_consecutive_llm_failures_instead_of_burning_candidates(radar) -> None:
+    run, publisher = radar
+
+    def llm_down(candidate, **_kwargs):
+        raise ConnectionError("litellm fora do ar")
+
+    stats = run(
+        *(video(f"d{i}", f"Filme {i} | Official Trailer", channel=f"Canal {i}") for i in range(6)),
+        analyze_with=llm_down,
+    )
+
+    # Tres falhas abrem o circuito; os outros tres candidatos nem sao reservados.
+    assert stats.failed == 3
+    assert stats.reserved == 3
+    assert stats.aborted == "llm_unavailable"
+    assert publisher.published == []
+    assert stats.duration_seconds >= 0
+
+
+def test_source_errors_are_counted_per_source(monkeypatch) -> None:
+    from release_radar import pipeline as p
+
+    stats = p.RunStats()
+
+    def fake_extra(_settings, on_error=None):
+        on_error("steam", RuntimeError("429"))
+        on_error("steam", RuntimeError("429"))
+        on_error("rss:https://feed.test", RuntimeError("timeout"))
+        return []
+
+    def fake_channel(**kwargs):
+        kwargs["on_error"]("@Canal", RuntimeError("bloqueado"))
+        return []
+
+    monkeypatch.setattr(p, "discover_extra_sources", fake_extra)
+    monkeypatch.setattr(p, "get_channel_candidates", fake_channel)
+    p.discover(Settings(_env_file=None, youtube_sources="movies|@Canal"), stats)
+
+    assert stats.source_errors == {"steam": 2, "rss:https://feed.test": 1, "@Canal": 1}

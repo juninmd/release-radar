@@ -64,9 +64,7 @@ class RunJob:
             thread.start()
             return True
 
-    def _run(
-        self, settings: Settings, dry_run: bool, limit: int | None, dsn: str | None
-    ) -> None:
+    def _run(self, settings: Settings, dry_run: bool, limit: int | None, dsn: str | None) -> None:
         try:
             stats = run_sync(settings, limit=limit, dry_run=dry_run, dsn=dsn)
             with self._lock:

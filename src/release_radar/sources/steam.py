@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from ..models import ReleaseCandidate
+from ..resilience import get_json
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ def fetch_steam(
         # appdetails e rate-limited; um 429 no meio nao pode zerar o que ja foi coletado.
         try:
             candidate = _app_candidate(client, app_id, country, language)
-        except Exception:
-            logger.warning("Steam appdetails failed for app %s", app_id)
+        except Exception as exc:
+            logger.warning("Steam appdetails failed for app %s: %s", app_id, exc)
             continue
         if candidate is not None:
             candidates.append(candidate)
@@ -41,7 +42,8 @@ def fetch_steam(
 
 
 def _search_upcoming(client: httpx.Client, limit: int, country: str, language: str) -> list[str]:
-    response = client.get(
+    payload = get_json(
+        client,
         SEARCH_URL,
         params={
             "query": "",
@@ -52,9 +54,8 @@ def _search_upcoming(client: httpx.Client, limit: int, country: str, language: s
             "count": max(limit * 2, 10),
         },
     )
-    response.raise_for_status()
     app_ids: list[str] = []
-    for item in response.json().get("items", []):
+    for item in payload.get("items", []):
         match = _APP_ID_RE.search(str(item.get("logo") or ""))
         if not match:
             logger.debug("Steam item without app id: %s", item.get("name"))
@@ -66,11 +67,12 @@ def _search_upcoming(client: httpx.Client, limit: int, country: str, language: s
 def _app_candidate(
     client: httpx.Client, app_id: str, country: str, language: str
 ) -> ReleaseCandidate | None:
-    response = client.get(
-        DETAILS_URL, params={"appids": app_id, "cc": country, "l": language}
+    payload = (
+        get_json(client, DETAILS_URL, params={"appids": app_id, "cc": country, "l": language}).get(
+            app_id
+        )
+        or {}
     )
-    response.raise_for_status()
-    payload = response.json().get(app_id) or {}
     if not payload.get("success"):
         return None
     data: dict[str, Any] = payload.get("data") or {}
