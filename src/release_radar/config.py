@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # Protege /api/run e /api/settings quando o painel e exposto em rede.
+    release_radar_api_token: str = ""
+    # Escotilha explicita: permite escrita anonima mesmo fora de localhost.
+    release_radar_allow_anon: bool = False
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "release_radar"

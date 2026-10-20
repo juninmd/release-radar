@@ -31,6 +31,7 @@ def main() -> None:
     web.add_argument(
         "--port", type=positive_int, default=8765, help="Porta do painel (padrão: 8765)"
     )
+    web.add_argument("--verbose", action="store_true", help="Exibe logs detalhados do painel")
     args = parser.parse_args()
 
     if args.command == "web":
@@ -38,6 +39,8 @@ def main() -> None:
 
         if args.port > 65535:
             parser.error("a porta deve estar entre 1 e 65535")
+        # Sem isto os logs de acesso e os avisos de exposicao nao aparecem.
+        configure_logging(verbose=args.verbose, json_logs=get_settings().json_logs)
         dsn = get_settings().postgres_dsn
         try:
             init_db(dsn)

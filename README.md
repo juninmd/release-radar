@@ -27,6 +27,21 @@ tem dados suficientes para determinar a disponibilidade atual.
 As capturas de [desktop, celular e outros estados](docs/UI_PREVIEW.md) usam
 dados fictícios e mostram a interface real executada em Chromium.
 
+## App desktop
+
+Há também um app de desktop em [`desktop/`](desktop/README.md) (Tauri v2 +
+React): uma janela compacta sempre no topo, com ícone na bandeja, notificações de
+novidades, atalho global `Ctrl+Shift+R`, skins e atualização assinada. Ele
+**consome a API publicada** pelo painel — não fala com o PostgreSQL nem com o
+Telegram — e permite disparar uma rodada do bot e ajustar fontes e limites pela
+própria interface. O painel web continua igual.
+
+Para servir essa API em rede, defina `RELEASE_RADAR_API_TOKEN` e suba o painel
+com `--host 0.0.0.0` (veja [.env.example](.env.example) e
+[desktop/README.md](desktop/README.md)). Sem o token, uma exposição fora de
+`localhost` passa a recusar `/api/run` e `/api/settings` com 403 até que você
+defina o token ou `RELEASE_RADAR_ALLOW_ANON=true`.
+
 ## Como o bot decide o que publicar
 
 1. Coleta links das fontes configuradas, alternando as fontes para que nenhuma monopolize a rodada.
@@ -188,9 +203,10 @@ se o banco cair, serve o último resultado por até 5 min), limite de requisiç�
 por IP (60 de rajada, 2/s; responde `429` com `Retry-After`) e leitura paginada
 até completar os 120 itens mesmo com muitos clipes ocultos. Os arquivos
 estáticos usam `ETag` e `Cache-Control: no-cache` (um deploy novo aparece na
-hora e, sem mudança, o navegador recebe `304`). `GET /healthz` confere o banco.
-O painel **não tem autenticação**: se sair da máquina local, coloque-o atrás de
-um proxy com autenticação (por trás de proxy, o limite vale por IP do proxy).
+hora e, sem mudança, o navegador recebe `304`). `GET /healthz` confere o banco
+(`/api/health` só indica que o processo está de pé). A leitura é pública; as
+rotas de escrita exigem `RELEASE_RADAR_API_TOKEN` fora do localhost. Por trás de
+proxy, o limite de requisições vale por IP do proxy.
 
 ## Container e cluster
 
@@ -203,6 +219,15 @@ conexão ao PostgreSQL; `GET /healthz` serve de probe de liveness/readiness.
 Para rodar tudo localmente, o `docker-compose.yml` sobe PostgreSQL e painel
 (`docker compose up -d db web`, em http://127.0.0.1:8765) e roda uma rodada do
 bot sob demanda (`docker compose run --rm bot`).
+
+O painel expõe: `GET /api/releases` (os links publicados, aberto),
+`GET /api/health`, `POST`/`GET /api/run` (dispara e acompanha uma rodada) e
+`GET`/`PUT /api/settings` (fontes e limites). Com `RELEASE_RADAR_API_TOKEN`
+definido, tudo menos `/api/releases` e `/api/health` exige
+`Authorization: Bearer <token>`; sem o token, fora de `localhost` essas rotas de
+escrita respondem 403 (use `RELEASE_RADAR_ALLOW_ANON=true` para liberar). Os
+ajustes salvos ficam na tabela `radar_settings` e sobrescrevem apenas as fontes e
+limites permitidos.
 
 Os valores padrão dos serviços internos estão no [.env.example](.env.example).
 O painel não expõe tokens de Telegram, chaves da análise ou transcrições na API.

@@ -26,6 +26,7 @@ from .logging_setup import configure_logging
 from .models import ReleaseCandidate
 from .release_policy import already_released, confirmed_upcoming, is_not_trailer
 from .resilience import CircuitBreaker
+from .settings_store import effective_settings, read_overrides
 from .sources import discover_extra_sources
 from .telegram_bot import TelegramPublisher
 from .transcriber import transcribe_audio
@@ -70,9 +71,16 @@ async def run_pipeline(
     settings: Settings,
     limit: int | None = None,
     dry_run: bool = False,
+    dsn: str | None = None,
 ) -> RunStats:
-    init_db(settings.postgres_dsn)
-    conn = get_connection(settings.postgres_dsn)
+    target = dsn or settings.postgres_dsn
+    init_db(target)
+    conn = get_connection(target)
+    try:
+        settings = effective_settings(settings, read_overrides(conn))
+    except Exception:
+        logger.exception("Failed to load settings overrides; using environment values")
+        conn.rollback()
     publisher = TelegramPublisher(settings.telegram_bot_token, settings.telegram_chat_id)
     stats = RunStats()
     started = time.monotonic()
@@ -269,5 +277,10 @@ def maybe_transcribe(
     return transcript
 
 
-def run_sync(settings: Settings, limit: int | None = None, dry_run: bool = False) -> RunStats:
-    return asyncio.run(run_pipeline(settings=settings, limit=limit, dry_run=dry_run))
+def run_sync(
+    settings: Settings,
+    limit: int | None = None,
+    dry_run: bool = False,
+    dsn: str | None = None,
+) -> RunStats:
+    return asyncio.run(run_pipeline(settings=settings, limit=limit, dry_run=dry_run, dsn=dsn))

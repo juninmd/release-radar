@@ -1,0 +1,32 @@
+{
+  "name": "release-radar-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "App desktop do Release Radar: novidades de filmes, séries, jogos e animes no canto da tela.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "lint": "tsc --noEmit",
+    "test": "bun test",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.3",
+    "@tauri-apps/plugin-process": "^2.3.0",
+    "@tauri-apps/plugin-updater": "^2.9.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "@types/bun": "^1.4.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
