@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/banner.svg" alt="Release Radar — as próximas histórias começam aqui" width="100%">
+
 # 📡 Release Radar
 
 **Descubra o que vem por aí: filmes, séries, jogos e animes — antes de todo mundo.**

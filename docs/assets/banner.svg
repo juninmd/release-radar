@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="t d">
+  <title id="t">Release Radar</title>
+  <desc id="d">Radar de lançamentos de filmes, séries, jogos e animes</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b131b"/>
+      <stop offset="1" stop-color="#14232d"/>
+    </linearGradient>
+    <radialGradient id="sweep" cx="0" cy="1" r="1">
+      <stop offset="0" stop-color="#b8e986" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#b8e986" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip"><rect width="1280" height="320" rx="20"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="1280" height="320" fill="url(#bg)"/>
+    <g transform="translate(1030 160)" fill="none" stroke="#b8e986">
+      <circle r="150" stroke-opacity=".28"/>
+      <circle r="108" stroke-opacity=".28"/>
+      <circle r="66" stroke-opacity=".28"/>
+      <circle r="26" stroke-opacity=".28"/>
+      <path d="M-190 0H190M0 -190V190" stroke-opacity=".18"/>
+      <path d="M0 0 L0 -150 A150 150 0 0 1 106 -106 Z" fill="url(#sweep)" stroke="none" transform="rotate(-18)"/>
+      <path d="M0 0 L106 -106" stroke-opacity=".9" stroke-width="2" transform="rotate(-18)"/>
+      <circle cx="62" cy="-58" r="6" fill="#b8e986" stroke="none"/>
+      <circle cx="62" cy="-58" r="14" stroke-opacity=".5"/>
+      <circle cx="-70" cy="38" r="4" fill="#e9b07a" stroke="none"/>
+      <circle cx="-24" cy="-96" r="4" fill="#8fd3d0" stroke="none"/>
+      <circle cx="96" cy="64" r="4" fill="#b8e986" stroke="none"/>
+      <circle r="5" fill="#b8e986" stroke="none"/>
+    </g>
+    <g font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+      <text x="72" y="86" font-size="15" font-weight="700" letter-spacing="4" fill="#b8e986">FILMES · SÉRIES · JOGOS · ANIMES</text>
+      <text x="68" y="168" font-size="84" font-weight="800" letter-spacing="-2" fill="#f4f1e6">Release<tspan fill="#b8e986">Radar</tspan></text>
+      <text x="72" y="222" font-size="24" fill="#c3ccd2">As próximas histórias começam aqui.</text>
+      <g font-size="14" font-weight="600" fill="#b8e986">
+        <rect x="72" y="250" width="92" height="30" rx="15" fill="none" stroke="#b8e986" stroke-opacity=".5"/><text x="118" y="270" text-anchor="middle">YouTube</text>
+        <rect x="174" y="250" width="72" height="30" rx="15" fill="none" stroke="#b8e986" stroke-opacity=".5"/><text x="210" y="270" text-anchor="middle">Steam</text>
+        <rect x="256" y="250" width="72" height="30" rx="15" fill="none" stroke="#b8e986" stroke-opacity=".5"/><text x="292" y="270" text-anchor="middle">Kitsu</text>
+        <rect x="338" y="250" width="62" height="30" rx="15" fill="none" stroke="#b8e986" stroke-opacity=".5"/><text x="369" y="270" text-anchor="middle">RSS</text>
+        <rect x="410" y="250" width="100" height="30" rx="15" fill="none" stroke="#b8e986" stroke-opacity=".5"/><text x="460" y="270" text-anchor="middle">Telegram</text>
+      </g>
+    </g>
+  </g>
+</svg>
