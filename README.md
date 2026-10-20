@@ -12,6 +12,7 @@ widget de desktop.
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 ![Tauri](https://img.shields.io/badge/desktop-Tauri%20v2-FFC131?logo=tauri&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 <img src="docs/previews/desktop.png" alt="Painel web do Release Radar" width="860">
 
@@ -152,3 +153,7 @@ docs/                capturas e proposta de fontes
 
 Veja [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada.
 Nunca versione `.env`, tokens ou chaves.
+
+## 📄 Licença
+
+[MIT](LICENSE).
