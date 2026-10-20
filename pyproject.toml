@@ -42,7 +42,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 quote-style = "double"
 
 [dependency-groups]
-browser = ["playwright==1.63.0"]
+browser = ["playwright==1.64.0"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.15.15",
