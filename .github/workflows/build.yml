@@ -3,6 +3,12 @@ name: Build
 on:
   pull_request:
     branches: [main, master]
+  # Reutilizado por docker.yml: cada push na main roda estes checks e so entao publica a imagem.
+  workflow_call:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -43,6 +49,34 @@ jobs:
 
       - name: Lint with ruff
         run: uv run ruff check .
+
+      - name: Check formatting with ruff
+        run: uv run ruff format --check .
+
+      - name: Type check with mypy
+        run: uv run mypy
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Typecheck, test and build the frontend
+        run: npm run check
+        working-directory: frontend
+
+      - name: Ensure the committed app.js matches frontend/src/app.ts
+        run: |
+          if ! git diff --exit-code -- src/release_radar/static/app.js; then
+            echo "::error file=src/release_radar/static/app.js::app.js is out of date. Run 'npm run build' in frontend/ and commit the result."
+            exit 1
+          fi
 
       - name: Install Chromium
         run: uv run --group browser playwright install --with-deps chromium

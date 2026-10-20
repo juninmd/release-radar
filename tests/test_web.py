@@ -96,3 +96,107 @@ def test_database_failure_returns_generic_error_without_connection_details(
     assert response.status_code == 503
     assert response.json() == {"error": "Nao foi possivel carregar os lancamentos."}
     assert "private-connection-details" not in response.text
+
+
+def test_static_files_use_etag_and_answer_304_when_unchanged(web_url: str) -> None:
+    first = httpx.get(f"{web_url}/app.js", timeout=5)
+    etag = first.headers["etag"]
+    assert first.headers["cache-control"] == "no-cache"
+
+    again = httpx.get(f"{web_url}/app.js", headers={"If-None-Match": etag}, timeout=5)
+
+    assert again.status_code == 304
+    assert again.content == b""
+    assert again.headers["etag"] == etag
+    assert httpx.get(f"{web_url}/app.js", headers={"If-None-Match": '"outro"'}).status_code == 200
+
+
+def test_healthz_checks_the_database(web_url: str) -> None:
+    response = httpx.get(f"{web_url}/healthz", timeout=5)
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_api_rate_limit_returns_429_with_retry_after(postgres_dsn: str) -> None:
+    init_db(postgres_dsn)
+    server = create_server(postgres_dsn, port=0, rate_burst=2, rate_per_second=0.1)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/api/releases"
+        statuses = [httpx.get(url, timeout=5).status_code for _ in range(3)]
+        limited = httpx.get(url, timeout=5)
+        assert statuses == [200, 200, 429]
+        assert limited.status_code == 429
+        assert int(limited.headers["retry-after"]) >= 1
+        # Arquivos estaticos e health check nao entram na cota da API.
+        assert httpx.get(url.replace("/api/releases", "/healthz"), timeout=5).status_code == 200
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_api_responses_are_cached_between_requests(
+    postgres_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from release_radar import web
+
+    init_db(postgres_dsn)
+    calls = []
+    real = web.list_releases
+    monkeypatch.setattr(web, "list_releases", lambda *a, **k: calls.append(1) or real(*a, **k))
+    server = create_server(postgres_dsn, port=0, cache_ttl=60)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/api/releases"
+        bodies = {httpx.get(url, timeout=5).text for _ in range(5)}
+        assert len(bodies) == 1
+        assert len(calls) == 1
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_list_releases_keeps_reading_until_hidden_clips_are_replaced(
+    postgres_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from release_radar import web
+
+    init_db(postgres_dsn)
+    conn = get_connection(postgres_dsn)
+    try:
+        # 3 artigos antigos atras de 6 clipes recentes: um lote fixo de 4 nao os alcancaria.
+        for index in range(9):
+            clip = index >= 3
+            candidate = ReleaseCandidate(
+                external_id=f"item{index}",
+                title=f"Behind the scenes {index}" if clip else f"Artigo {index}",
+                url=f"https://youtu.be/clip{index}" if clip else f"https://example.test/{index}",
+                channel="canal",
+                category="movies",
+                duration=0,
+                upload_date=None,
+                thumbnail=None,
+                source="youtube" if clip else "rss",
+            )
+            assert reserve_candidate(conn, candidate, f"hash{index}")
+            mark_posted(conn, candidate.external_id)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE release_items SET posted_at = '2026-01-01'::timestamp "
+                    "+ %s * interval '1 hour' WHERE external_id = %s",
+                    (-index if not clip else index, candidate.external_id),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(web, "BATCH_SIZE", 2)
+
+    items = web.list_releases(postgres_dsn, limit=3)
+
+    assert [item["id"] for item in items] == ["item0", "item1", "item2"]
+    assert all(item["kind"] == "article" for item in items)

@@ -124,29 +124,55 @@ transcrições nunca saem pela API.
 
 ## 🐳 Container
 
+A imagem roda sem privilégios (usuário `radar`) e executa uma rodada do bot por padrão.
+Para subir tudo localmente (PostgreSQL + painel em http://127.0.0.1:8765):
+
 ```bash
-docker run --env-file .env ghcr.io/juninmd/release-radar:latest          # uma rodada
-docker run --env-file .env -p 8765:8765 ghcr.io/juninmd/release-radar:latest \
-  uv run release-radar web --host 0.0.0.0
+docker compose up -d db web
+docker compose run --rm bot                       # uma rodada do bot
+docker compose run --rm bot release-radar run --dry-run --verbose
 ```
+
+Fora do Compose, sirva o painel com `release-radar web --host 0.0.0.0 --port 8765`;
+`GET /healthz` confere o banco e serve de probe de liveness/readiness.
+
+## 🛡️ Resiliência e operação
+
+- **Retry com backoff** (exponencial, com jitter e `Retry-After`) em fontes HTTP, Whisper e LLM.
+- **Circuit breaker por rodada:** falhas seguidas do Whisper desligam a transcrição; da LLM
+  interrompem a rodada (`aborted: llm_unavailable`).
+- **Estatísticas por rodada** (`--json` ou log `Run finished`): candidatos e falhas por fonte, tempos.
+- `LOG_FORMAT=json` emite logs JSON, prontos para Loki/Datadog/CloudWatch.
+- **Migrações** versionadas em `src/release_radar/sql/NNNN_nome.sql`, aplicadas na inicialização
+  com advisory lock; nunca edite uma migração já aplicada.
+- **API do painel:** pool de conexões, cache de 15 s (serve o último resultado se o banco cair),
+  limite de requisições por IP (`429` com `Retry-After`), `ETag` nos estáticos.
 
 ## 🧪 Desenvolvimento
 
 ```bash
-uv run ruff check . && uv run pytest -q && uv build
+uv run ruff check . && uv run ruff format --check . && uv run mypy
+uv run pytest -q && uv build
 ```
+
+O painel é TypeScript (`frontend/src/app.ts`) compilado para `src/release_radar/static/app.js`
+(versionado). Após editar o `.ts`: `cd frontend && npm ci && npm run check`. A CI falha se o
+`app.js` divergir do gerado.
 
 Testes de banco usam `RELEASE_RADAR_TEST_DSN` (schema isolado por teste) ou `pgserver`;
 testes de navegador exigem `uv sync --locked --group browser` e Chromium. Nenhum teste acessa
-fontes externas ou o Telegram. Veja [CONTRIBUTING.md](CONTRIBUTING.md).
+fontes externas ou o Telegram. A CI roda lint, formatação, mypy, frontend, testes e build, e a
+imagem só é publicada se tudo passar. Veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🗂️ Estrutura
 
 ```
 src/release_radar/   bot, pipeline, fontes, API e painel web
   sources/           steam, kitsu, rss
+  sql/               migrações do banco
 frontend/            TypeScript do painel (compila para static/)
 desktop/             app Tauri v2 + React
+scripts/             ferramentas manuais (sondas)
 tests/               pytest (banco, API, fontes, navegador)
 docs/                capturas e proposta de fontes
 ```

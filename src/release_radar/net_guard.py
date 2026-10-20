@@ -87,7 +87,7 @@ def resolves_internal(host: str) -> bool:
         infos = socket.getaddrinfo(host, None)
     except (socket.gaierror, UnicodeError, OSError):
         return False
-    return any(is_internal_address(info[4][0]) for info in infos)
+    return any(is_internal_address(str(info[4][0])) for info in infos)
 
 
 def assert_public_url(url: str) -> str:

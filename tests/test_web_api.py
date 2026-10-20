@@ -110,9 +110,7 @@ def _await_run(base: str, headers: dict, timeout: float = 10.0) -> dict:
 
 def test_run_endpoint_runs_the_pipeline_and_reports_stats(api) -> None:
     base, headers = api
-    started = httpx.post(
-        f"{base}/api/run", json={"dry_run": True}, timeout=5, headers=headers
-    )
+    started = httpx.post(f"{base}/api/run", json={"dry_run": True}, timeout=5, headers=headers)
     assert started.status_code == 202
     assert started.json()["accepted"] is True
 
@@ -125,9 +123,7 @@ def test_run_endpoint_runs_the_pipeline_and_reports_stats(api) -> None:
 
 def test_run_endpoint_rejects_invalid_limit(api) -> None:
     base, headers = api
-    response = httpx.post(
-        f"{base}/api/run", json={"limit": 0}, timeout=5, headers=headers
-    )
+    response = httpx.post(f"{base}/api/run", json={"limit": 0}, timeout=5, headers=headers)
     assert response.status_code == 400
 
 
@@ -244,7 +240,5 @@ def test_mutating_routes_require_json_content_type(api) -> None:
 def test_run_limit_respects_the_same_bounds(api) -> None:
     base, headers = api
     for value in (True, 3.9, 0, 10**6):
-        response = httpx.post(
-            f"{base}/api/run", json={"limit": value}, timeout=5, headers=headers
-        )
+        response = httpx.post(f"{base}/api/run", json={"limit": value}, timeout=5, headers=headers)
         assert response.status_code == 400, value
