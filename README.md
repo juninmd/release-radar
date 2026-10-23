@@ -22,6 +22,10 @@ widget de desktop.
 
 ---
 
+**Índice:** [Destaques](#-destaques) · [Como funciona](#-como-funciona) · [Início rápido](#-início-rápido) · [Uso](#-uso) · [Fontes](#-fontes-e-configuração) · [Telas](#%EF%B8%8F-telas) · [Desktop](#%EF%B8%8F-app-desktop) · [API](#-api) · [Container](#-container) · [Operação](#%EF%B8%8F-resiliência-e-operação) · [Desenvolvimento](#-desenvolvimento) · [CI](#-gates-de-ci) · [Estrutura](#%EF%B8%8F-estrutura)
+
+---
+
 ## ✨ Destaques
 
 - 🎬 **Quatro categorias:** filmes, séries, jogos e animes.
@@ -74,6 +78,35 @@ uv run release-radar web                       # http://127.0.0.1:8765
 
 `--json` devolve o resultado em JSON para automações. O painel escuta só em `localhost`;
 para expor, defina `RELEASE_RADAR_API_TOKEN` e use `--host 0.0.0.0` atrás de HTTPS.
+
+## 🧰 Uso
+
+```bash
+# 1. Teste seguro: busca e analisa, mas não grava nem publica (saída não verificada: exige PostgreSQL e LLM)
+uv run release-radar run --dry-run --limit 3
+
+# 2. Rodada real, resultado em JSON para automação (saída não verificada: exige PostgreSQL, LLM e Telegram)
+uv run release-radar run --limit 12 --json
+
+# 3. Painel web em http://127.0.0.1:8765 (saída não verificada: exige PostgreSQL)
+uv run release-radar web --port 8765
+
+# 4. Opções de cada subcomando (verificado, sem credencial)
+uv run release-radar run --help
+```
+
+Saída real do `--help` (sem credenciais) em [`docs/terminal.txt`](docs/terminal.txt); trecho:
+
+```text
+usage: release-radar [-h] {run,web} ...
+
+positional arguments:
+  {run,web}
+    run       Busca, analisa e publica anúncios de estreias futuras
+    web       Inicia o painel de links publicados
+```
+
+Exemplo do contrato da API (fictício): [`docs/previews/api-example.json`](docs/previews/api-example.json).
 
 ## 🔌 Fontes e configuração
 
@@ -163,6 +196,16 @@ Testes de banco usam `RELEASE_RADAR_TEST_DSN` (schema isolado por teste) ou `pgs
 testes de navegador exigem `uv sync --locked --group browser` e Chromium. Nenhum teste acessa
 fontes externas ou o Telegram. A CI roda lint, formatação, mypy, frontend, testes e build, e a
 imagem só é publicada se tudo passar. Veja [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## ✅ Gates de CI
+
+| Workflow | Quando | O que checa |
+|---|---|---|
+| `build.yml` (Build) | PR e `workflow_call` | `ruff check`, `ruff format --check`, `mypy`, frontend (`npm run check`), `app.js` em dia, Chromium + `pytest`, `uv build` |
+| `desktop.yml` (Desktop) | PR/push em `desktop/**` | `bun run lint`, `bun test`, `bun run build`, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` |
+| `validate.yml` (Validate) | PR e push em `main` | validação padrão do reusable `juninmd/base-actions` |
+| `security.yml` (Security Scan) | push em `main`, semanal, manual | varredura de segurança do reusable `juninmd/base-actions` |
+| `docker.yml` (Build and Push Docker Image) | push em `main`, manual | build e publicação da imagem via reusable `juninmd/base-actions` |
 
 ## 🗂️ Estrutura
 
