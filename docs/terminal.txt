@@ -1,0 +1,29 @@
+$ uv run release-radar --help
+usage: release-radar [-h] {run,web} ...
+
+positional arguments:
+  {run,web}
+    run       Busca, analisa e publica anúncios de estreias futuras
+    web       Inicia o painel de links publicados
+
+options:
+  -h, --help  show this help message and exit
+
+$ uv run release-radar run --help
+usage: release-radar run [-h] [--limit LIMIT] [--dry-run] [--verbose] [--json]
+
+options:
+  -h, --help     show this help message and exit
+  --limit LIMIT  Máximo de itens analisados
+  --dry-run      Testa sem gravar itens ou publicar
+  --verbose      Exibe logs detalhados
+  --json         Exibe o resultado em JSON para automação
+
+$ uv run release-radar web --help
+usage: release-radar web [-h] [--host HOST] [--port PORT] [--verbose]
+
+options:
+  -h, --help   show this help message and exit
+  --host HOST  Endereço de escuta (padrão: local)
+  --port PORT  Porta do painel (padrão: 8765)
+  --verbose    Exibe logs detalhados do painel
