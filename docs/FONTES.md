@@ -1,7 +1,10 @@
 # Proposta de novas fontes de dados
 
-Hoje o radar coleta de **YouTube** (via yt-dlp), **Steam**, **Kitsu** e **RSS**.
-Esta proposta lista o que adicionar, por prioridade. Todas devolvem
+Hoje o radar coleta de **YouTube** (via yt-dlp), **Steam**, **Kitsu**, **AniList**,
+**TVmaze**, **Jikan** (desligada por padrão) e **RSS**, todas sem chave de API.
+Esta proposta lista o que ainda falta, por prioridade. Já implementadas: AniList, Jikan e
+TVmaze (a Jikan não foi verificada contra a API real, pois estava inacessível no ambiente de
+desenvolvimento; ative com `JIKAN_ENABLED=true` e confira os logs). Todas devolvem
 `ReleaseCandidate` e passam pelo mesmo funil (dedupe → análise → *release gate*).
 
 > Confirme os termos de uso e os limites de cada API antes de ativar em produção;
@@ -11,9 +14,9 @@ Esta proposta lista o que adicionar, por prioridade. Todas devolvem
 
 | Fonte | Categoria | Acesso | O que traz | Esforço |
 |---|---|---|---|---|
-| **AniList** | anime, mangá | GraphQL público (`status: NOT_YET_RELEASED`) | Estreias com data, capa, popularidade; complementa o Kitsu | baixo |
-| **Jikan (MyAnimeList)** | anime | REST público `/seasons/upcoming` | Temporada seguinte, notas e membros do MAL | baixo |
-| **TVmaze** | séries | REST público (`/schedule/web`, `/shows`) | Estreias de séries/streaming com data exata | baixo |
+| ~~AniList~~ ✅ | anime, mangá | GraphQL público (`status: NOT_YET_RELEASED`) | Estreias com data, capa, popularidade; complementa o Kitsu | baixo |
+| ~~Jikan (MyAnimeList)~~ ✅ | anime | REST público `/seasons/upcoming` | Temporada seguinte, notas e membros do MAL | baixo |
+| ~~TVmaze~~ ✅ | séries | REST público (`/schedule/web`, `/shows`) | Estreias de séries/streaming com data exata | baixo |
 | **YouTube via feed Atom** | todas | `youtube.com/feeds/videos.xml?channel_id=…` | Descoberta de vídeos **sem yt-dlp** (menos bloqueios); yt-dlp só para o que passar | médio |
 | **MangaDex** | mangá | REST público | Lançamentos e adaptações anunciadas | baixo |
 | **Wikipedia / Wikidata** | filmes, séries, jogos | SPARQL (`publication date` futura) | Calendário de estreias confirmado por fonte aberta | médio |
@@ -52,7 +55,6 @@ def fetch_anilist(client: httpx.Client, limit: int) -> list[ReleaseCandidate]:
 
 ## Ordem sugerida
 
-1. **TMDB + TVmaze** (cobrem filmes e séries, hoje o ponto mais fraco só com RSS/YouTube).
-2. **AniList + Jikan** (anime com data e popularidade, reduz dependência do Kitsu).
-3. **IGDB** (datas por plataforma para jogos).
-4. **YouTube via Atom** (robustez) e **saídas** (RSS/iCal/webhooks).
+1. **Wikidata** (filmes e jogos com data aberta, sem chave): o ponto mais fraco hoje é cinema.
+2. **YouTube via Atom** (robustez) e **saídas** (RSS/iCal/webhooks).
+3. Se aceitar chave grátis: **TMDB** (filmes) e **IGDB** (jogos).

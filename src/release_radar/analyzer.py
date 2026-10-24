@@ -8,7 +8,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from .models import HypeSignals, ReleaseAnalysis, ReleaseCandidate
+from .models import CATALOG_SOURCES, HypeSignals, ReleaseAnalysis, ReleaseCandidate
 from .work_identity import classify_video_title
 
 logger = logging.getLogger(__name__)
@@ -212,11 +212,11 @@ def fallback_analysis(
         "gameplay",
         "announcement",
     )
-    # Steam e Kitsu ja entregam so itens nao lancados; sem LLM, o titulo sozinho
+    # Fontes de catalogo ja entregam so itens nao lancados; sem LLM, o titulo sozinho
     # ("Halloween: The Game") nunca casaria com as palavras-chave.
     content_type = content_type_from_json(None, candidate)
     is_release = content_type != "clip" and (
-        candidate.source in ("steam", "kitsu") or any(word in title_l for word in release_words)
+        candidate.source in CATALOG_SOURCES or any(word in title_l for word in release_words)
     )
     release_date = source_release_date(candidate)
     summary = candidate.description[:700] or transcript[:700]
@@ -237,6 +237,6 @@ def fallback_analysis(
         tags=["heuristic"],
         raw={"fallback": True, "raw_text": raw_text},
         release_date=release_date,
-        release_status="upcoming" if candidate.source in ("steam", "kitsu") else "unknown",
+        release_status="upcoming" if candidate.source in CATALOG_SOURCES else "unknown",
         content_type=content_type,
     )

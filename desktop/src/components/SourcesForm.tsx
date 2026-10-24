@@ -17,12 +17,19 @@ const NUMBERS = [
   { key: "max_transcription_seconds", label: "Duração máxima do vídeo (s)" },
   { key: "steam_limit", label: "Jogos da Steam" },
   { key: "kitsu_limit", label: "Animes do Kitsu" },
+  { key: "anilist_limit", label: "Animes do AniList" },
+  { key: "jikan_limit", label: "Animes do MyAnimeList" },
+  { key: "tvmaze_limit", label: "Séries do TVmaze" },
+  { key: "tvmaze_days", label: "Dias à frente (TVmaze)" },
 ] as const;
 
 const TOGGLES = [
   { key: "analyze_video_content", label: "Transcrever trailers" },
   { key: "steam_enabled", label: "Fonte Steam" },
   { key: "kitsu_enabled", label: "Fonte Kitsu" },
+  { key: "anilist_enabled", label: "Fonte AniList" },
+  { key: "jikan_enabled", label: "Fonte MyAnimeList (Jikan)" },
+  { key: "tvmaze_enabled", label: "Fonte TVmaze" },
 ] as const;
 
 export function SourcesForm() {

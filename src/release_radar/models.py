@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Fontes de catalogo ja entregam so obras nao lancadas (com data oficial quando existe).
+CATALOG_SOURCES = frozenset({"steam", "kitsu", "tvmaze", "anilist", "jikan"})
+
 
 @dataclass(frozen=True)
 class ReleaseCandidate:

@@ -75,6 +75,17 @@ def get_json(client: httpx.Client, url: str, **kwargs) -> dict:
     return with_retries(call, label=f"GET {url}")
 
 
+def post_json(client: httpx.Client, url: str, **kwargs) -> dict:
+    """POST com retry que devolve o JSON (GraphQL); levanta HTTPStatusError se falhar."""
+
+    def call() -> dict:
+        response = client.post(url, **kwargs)
+        response.raise_for_status()
+        return response.json()
+
+    return with_retries(call, label=f"POST {url}")
+
+
 class CircuitBreaker:
     """Abre apos N falhas seguidas e so volta a tentar depois do cooldown.
 
