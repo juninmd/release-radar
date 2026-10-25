@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     tvmaze_limit: int = 8
     tvmaze_days: int = 14
 
+    # Wikidata: filmes e jogos com estreia futura confirmada (SPARQL publico, sem key).
+    # Desligada por padrao: o Wikimedia aplica politica anti-bot e responde 403 a alguns
+    # clientes; ative com WIKIDATA_ENABLED=true e confira os logs. O limite vale por tipo.
+    wikidata_enabled: bool = False
+    wikidata_limit: int = 6
+    wikidata_days: int = 365
+
     http_timeout: float = 20.0
 
     # "text" (legivel, padrao) ou "json" (uma linha JSON por log, para agregadores).

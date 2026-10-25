@@ -117,6 +117,7 @@ Exemplo do contrato da API (fictício): [`docs/previews/api-example.json`](docs/
 | Kitsu | animes | `KITSU_ENABLED`, `KITSU_LIMIT` | Animes `upcoming` |
 | AniList | animes | `ANILIST_ENABLED`, `ANILIST_LIMIT` | GraphQL público, `NOT_YET_RELEASED` por popularidade |
 | Jikan (MyAnimeList) | animes | `JIKAN_ENABLED`, `JIKAN_LIMIT` | Próxima temporada; desligada por padrão |
+| Wikidata | filmes, jogos | `WIKIDATA_ENABLED`, `WIKIDATA_LIMIT`, `WIKIDATA_DAYS` | SPARQL público; só estreias com data de dia futura em todas as regiões; desligada por padrão |
 | TVmaze | séries | `TVMAZE_ENABLED`, `TVMAZE_LIMIT`, `TVMAZE_DAYS` | Estreias (1x01) em streaming nos próximos dias |
 | RSS / Atom | por feed | `RSS_SOURCES`, `RSS_LIMIT` | RSS 2.0, RDF e Atom |
 
@@ -124,7 +125,7 @@ Listas usam `categoria|endereço` separados por vírgula; categorias: `movies`, 
 `games`, `anime`. Todas as variáveis estão em [`.env.example`](.env.example).
 
 Nenhuma fonte exige chave de API. As fontes rodam em paralelo e uma que falha não derruba as
-outras (o erro é contado por fonte na rodada). **Em breve:** Wikidata, saídas `.ics`/webhook e
+outras (o erro é contado por fonte na rodada). **Em breve:** saídas `.ics`/webhook e
 mais — veja a [proposta de novas fontes](docs/FONTES.md).
 
 ## 🖼️ Telas
@@ -215,7 +216,7 @@ imagem só é publicada se tudo passar. Veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```
 src/release_radar/   bot, pipeline, fontes, API e painel web
-  sources/           steam, kitsu, anilist, jikan, tvmaze, rss
+  sources/           steam, kitsu, anilist, jikan, tvmaze, wikidata, rss
   sql/               migrações do banco
 frontend/            TypeScript do painel (compila para static/)
 desktop/             app Tauri v2 + React

@@ -15,6 +15,8 @@ from .kitsu import fetch_kitsu
 from .rss import fetch_rss
 from .steam import fetch_steam
 from .tvmaze import fetch_tvmaze
+from .wikidata import KINDS as WIKIDATA_KINDS
+from .wikidata import fetch_wikidata
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ __all__ = [
     "fetch_rss",
     "fetch_steam",
     "fetch_tvmaze",
+    "fetch_wikidata",
 ]
 
 
@@ -104,6 +107,20 @@ def _build_fetchers(
                 ),
             )
         )
+    if settings.wikidata_enabled:
+        # Um fetcher por tipo: o SPARQL e lento e os dois passam a rodar em paralelo.
+        for kind in WIKIDATA_KINDS:
+            fetchers.append(
+                (
+                    f"wikidata:{kind}",
+                    partial(
+                        fetch_wikidata,
+                        kind=kind,
+                        limit=settings.wikidata_limit,
+                        days_ahead=settings.wikidata_days,
+                    ),
+                )
+            )
     for category, feed_url in settings.parsed_rss_sources:
         fetchers.append(
             (

@@ -21,6 +21,8 @@ const NUMBERS = [
   { key: "jikan_limit", label: "Animes do MyAnimeList" },
   { key: "tvmaze_limit", label: "Séries do TVmaze" },
   { key: "tvmaze_days", label: "Dias à frente (TVmaze)" },
+  { key: "wikidata_limit", label: "Filmes e jogos do Wikidata (por tipo)" },
+  { key: "wikidata_days", label: "Dias à frente (Wikidata)" },
 ] as const;
 
 const TOGGLES = [
@@ -30,6 +32,7 @@ const TOGGLES = [
   { key: "anilist_enabled", label: "Fonte AniList" },
   { key: "jikan_enabled", label: "Fonte MyAnimeList (Jikan)" },
   { key: "tvmaze_enabled", label: "Fonte TVmaze" },
+  { key: "wikidata_enabled", label: "Fonte Wikidata" },
 ] as const;
 
 export function SourcesForm() {
