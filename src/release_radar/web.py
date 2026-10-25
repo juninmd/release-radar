@@ -172,6 +172,33 @@ def load_overrides(dsn: str) -> dict[str, Any]:
         conn.close()
 
 
+def _normalize_host(host_raw: str) -> str:
+    host_str = host_raw.strip().lower()
+    if not host_str:
+        return ""
+    if host_str.startswith("["):
+        close_bracket = host_str.rfind("]")
+        hostname = host_str[1:close_bracket] if close_bracket != -1 else host_str.lstrip("[")
+    else:
+        hostname = host_str.split(":", 1)[0]
+    if hostname.startswith("[") and hostname.endswith("]"):
+        hostname = hostname[1:-1]
+    return hostname.strip()
+
+
+def _build_trusted_hosts(bind_host: str, allowed_hosts_setting: str) -> set[str]:
+    trusted: set[str] = {_normalize_host(h) for h in LOCAL_HOSTS if _normalize_host(h)}
+    norm_bind = _normalize_host(bind_host)
+    if norm_bind and norm_bind not in {"0.0.0.0", "::", "0:0:0:0:0:0:0:0"}:
+        trusted.add(norm_bind)
+    if allowed_hosts_setting:
+        for item in allowed_hosts_setting.split(","):
+            norm_item = _normalize_host(item)
+            if norm_item:
+                trusted.add(norm_item)
+    return trusted
+
+
 def create_server(
     dsn: str,
     host: str = "127.0.0.1",
@@ -192,6 +219,7 @@ def create_server(
     db = Database(dsn)
     cache: TTLCache[list[dict]] = TTLCache(ttl=cache_ttl)
     limiter = RateLimiter(burst=rate_burst, per_second=rate_per_second)
+    trusted_hosts = _build_trusted_hosts(host, base_settings.release_radar_allowed_hosts)
     write_limiter = RateLimiter(burst=write_rate_burst, per_second=write_rate_per_second)
 
     class Handler(BaseHTTPRequestHandler):
@@ -223,6 +251,8 @@ def create_server(
             path = urlsplit(self.path).path
             self.extra_headers: dict[str, str] = {}
             try:
+                if method in {"PUT", "POST"} or path in {"/api/settings", "/api/run"}:
+                    self._require_trusted_host()
                 if method in {"POST", "PUT"}:
                     wait = write_limiter.acquire(self.client_address[0])
                     if wait:
@@ -283,12 +313,35 @@ def create_server(
                 raise ApiError(503, "Banco indisponivel.") from None
             self._json(200, {"status": "ok"})
 
+        def _has_valid_token(self) -> bool:
+            if not token:
+                return False
+            scheme, _, value = self.headers.get("Authorization", "").partition(" ")
+            return scheme.lower() == "bearer" and hmac.compare_digest(
+                value.strip().encode(), token.encode()
+            )
+
+        def _require_trusted_host(self) -> None:
+            # Com RELEASE_RADAR_API_TOKEN definido e valido a checagem pode ser dispensada,
+            # pois o token ja autentica a requisicao.
+            if self._has_valid_token():
+                return
+
+            raw_host = self.headers.get("Host", "")
+            req_host = _normalize_host(raw_host)
+            if not req_host or req_host not in trusted_hosts:
+                raise ApiError(421, "Host nao permitido.")
+
+            raw_origin = self.headers.get("Origin", "")
+            if raw_origin:
+                origin_hostname = urlsplit(raw_origin).hostname or ""
+                origin_host = _normalize_host(origin_hostname)
+                if not origin_host or origin_host not in trusted_hosts:
+                    raise ApiError(421, "Host nao permitido.")
+
         def _require_token(self) -> None:
             if token:
-                scheme, _, value = self.headers.get("Authorization", "").partition(" ")
-                if scheme.lower() != "bearer" or not hmac.compare_digest(
-                    value.strip().encode(), token.encode()
-                ):
+                if not self._has_valid_token():
                     raise ApiError(401, "Nao autorizado.")
                 return
             if allow_anonymous_writes:

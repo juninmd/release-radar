@@ -58,6 +58,21 @@ def open_api(postgres_dsn: str) -> Iterator[str]:
         server.server_close()
 
 
+@pytest.fixture
+def anon_api(postgres_dsn: str) -> Iterator[tuple[str, int]]:
+    init_db(postgres_dsn)
+    settings = Settings(_env_file=None)
+    server = create_server(postgres_dsn, port=0, settings=settings, allow_anonymous_writes=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", server.server_port
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_health_and_releases_stay_open_when_a_token_is_configured(api) -> None:
     base, _ = api
     assert httpx.get(f"{base}/api/health", timeout=5).json()["status"] == "ok"
@@ -245,6 +260,92 @@ def test_run_limit_respects_the_same_bounds(api) -> None:
     for value in (True, 3.9, 0, 10**6):
         response = httpx.post(f"{base}/api/run", json={"limit": value}, timeout=5, headers=headers)
         assert response.status_code == 400, value
+
+
+def test_put_settings_rejects_untrusted_host_without_token(anon_api) -> None:
+    base, port = anon_api
+    blocked = httpx.put(
+        f"{base}/api/settings",
+        json={"rss_limit": 7},
+        headers={"Host": "evil.example:8765"},
+        timeout=5,
+    )
+    assert blocked.status_code == 421
+    assert blocked.json() == {"error": "Host nao permitido."}
+
+    allowed = httpx.put(
+        f"{base}/api/settings",
+        json={"rss_limit": 7},
+        headers={"Host": f"127.0.0.1:{port}"},
+        timeout=5,
+    )
+    assert allowed.status_code == 200
+
+
+def test_post_run_rejects_untrusted_origin(anon_api) -> None:
+    base, port = anon_api
+    blocked = httpx.post(
+        f"{base}/api/run",
+        json={"dry_run": True},
+        headers={"Host": f"127.0.0.1:{port}", "Origin": "http://evil.example"},
+        timeout=5,
+    )
+    assert blocked.status_code == 421
+    assert blocked.json() == {"error": "Host nao permitido."}
+
+
+def test_public_routes_allow_any_host(anon_api) -> None:
+    base, _ = anon_api
+    evil_headers = {"Host": "rebind.example.test:8765"}
+    assert httpx.get(f"{base}/healthz", headers=evil_headers, timeout=5).status_code == 200
+    assert httpx.get(f"{base}/api/health", headers=evil_headers, timeout=5).status_code == 200
+    assert httpx.get(f"{base}/api/releases", headers=evil_headers, timeout=5).status_code == 200
+
+
+def test_release_radar_allowed_hosts_setting(postgres_dsn: str) -> None:
+    init_db(postgres_dsn)
+    settings = Settings(
+        _env_file=None, release_radar_allowed_hosts="panel.example.test, custom.local"
+    )
+    server = create_server(postgres_dsn, port=0, settings=settings, allow_anonymous_writes=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        response = httpx.put(
+            f"{base}/api/settings",
+            json={"rss_limit": 7},
+            headers={"Host": "panel.example.test:8765"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+
+        origin_ok = httpx.post(
+            f"{base}/api/run",
+            json={"dry_run": True},
+            headers={
+                "Host": f"127.0.0.1:{server.server_port}",
+                "Origin": "https://custom.local:8765",
+            },
+            timeout=5,
+        )
+        assert origin_ok.status_code == 202
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_valid_token_bypasses_host_check(api) -> None:
+    base, headers = api
+    # Com token valido em Authorization header, Host estranho e aceito.
+    response = httpx.put(
+        f"{base}/api/settings",
+        json={"rss_limit": 7},
+        headers={**headers, "Host": "evil.example:8765"},
+        timeout=5,
+    )
+    assert response.status_code == 200
 
 
 def test_invalid_content_length_returns_400(api) -> None:
