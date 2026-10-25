@@ -31,6 +31,13 @@ EDITABLE_FIELDS: dict[str, str] = {
     "steam_language": "str",
     "kitsu_enabled": "bool",
     "kitsu_limit": "int",
+    "anilist_enabled": "bool",
+    "anilist_limit": "int",
+    "jikan_enabled": "bool",
+    "jikan_limit": "int",
+    "tvmaze_enabled": "bool",
+    "tvmaze_limit": "int",
+    "tvmaze_days": "int",
 }
 
 # Faixas defensivas: um ajuste absurdo gastaria LLM, disco e banda.
@@ -41,6 +48,10 @@ INT_LIMITS: dict[str, tuple[int, int]] = {
     "max_transcription_seconds": (0, 3600),
     "steam_limit": (0, 50),
     "kitsu_limit": (0, 50),
+    "anilist_limit": (0, 50),
+    "jikan_limit": (0, 25),
+    "tvmaze_limit": (0, 50),
+    "tvmaze_days": (1, 30),
 }
 
 _TRUE = {"1", "true", "on", "yes", "sim"}

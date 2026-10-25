@@ -1,5 +1,7 @@
 from urllib.parse import urlsplit
 
+from .models import CATALOG_SOURCES
+
 
 def link_kind(url: str, source: str) -> str:
     """Classifica pelo destino para feeds com links diretos para o YouTube."""
@@ -9,4 +11,4 @@ def link_kind(url: str, source: str) -> str:
         host = ""
     if host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com"):
         return "video"
-    return "catalog" if source in {"steam", "kitsu"} else "article"
+    return "catalog" if source in CATALOG_SOURCES else "article"

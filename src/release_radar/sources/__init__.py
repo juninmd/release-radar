@@ -2,21 +2,35 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 import httpx
 
 from ..config import Settings
 from ..models import ReleaseCandidate
+from .anilist import fetch_anilist
+from .jikan import fetch_jikan
 from .kitsu import fetch_kitsu
 from .rss import fetch_rss
 from .steam import fetch_steam
+from .tvmaze import fetch_tvmaze
 
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "release-radar/0.1 (+https://github.com/juninmd/release-radar)"
 
-__all__ = ["discover_extra_sources", "fetch_kitsu", "fetch_rss", "fetch_steam"]
+MAX_PARALLEL_SOURCES = 6
+
+__all__ = [
+    "discover_extra_sources",
+    "fetch_anilist",
+    "fetch_jikan",
+    "fetch_kitsu",
+    "fetch_rss",
+    "fetch_steam",
+    "fetch_tvmaze",
+]
 
 
 SourceErrorHandler = Callable[[str, Exception], None]
@@ -33,16 +47,22 @@ def discover_extra_sources(
     fetchers = _build_fetchers(settings)
     if not fetchers:
         return candidates
-    with httpx.Client(
-        timeout=settings.http_timeout,
-        headers={"User-Agent": USER_AGENT},
-        follow_redirects=True,
-    ) as client:
-        for name, fetcher in fetchers:
+    with (
+        httpx.Client(
+            timeout=settings.http_timeout,
+            headers={"User-Agent": USER_AGENT},
+            follow_redirects=True,
+        ) as client,
+        ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_SOURCES, len(fetchers))) as pool,
+    ):
+        # Fontes sao independentes e I/O-bound: rodam em paralelo, mas o resultado
+        # e coletado na ordem de registro para a rodada continuar deterministica.
+        futures = [(name, pool.submit(fetcher, client)) for name, fetcher in fetchers]
+        for name, future in futures:
             try:
-                found = fetcher(client)
+                found = future.result()
             except Exception as exc:
-                logger.exception("Source %s failed", name)
+                logger.error("Source %s failed", name, exc_info=exc)
                 if on_error:
                     on_error(name, exc)
                 continue
@@ -69,6 +89,21 @@ def _build_fetchers(
         )
     if settings.kitsu_enabled:
         fetchers.append(("kitsu", lambda client: fetch_kitsu(client, limit=settings.kitsu_limit)))
+    if settings.anilist_enabled:
+        fetchers.append(
+            ("anilist", lambda client: fetch_anilist(client, limit=settings.anilist_limit))
+        )
+    if settings.jikan_enabled:
+        fetchers.append(("jikan", lambda client: fetch_jikan(client, limit=settings.jikan_limit)))
+    if settings.tvmaze_enabled:
+        fetchers.append(
+            (
+                "tvmaze",
+                lambda client: fetch_tvmaze(
+                    client, limit=settings.tvmaze_limit, days_ahead=settings.tvmaze_days
+                ),
+            )
+        )
     for category, feed_url in settings.parsed_rss_sources:
         fetchers.append(
             (

@@ -53,8 +53,15 @@ class Settings(BaseSettings):
         "games|https://store.steampowered.com/feeds/news.xml,"
         "anime|https://www.animenewsnetwork.com/all/rss.xml,"
         "movies|https://www.slashfilm.com/feed/,"
+        "games|https://www.gematsu.com/feed,"
+        "games|https://www.eurogamer.net/feed,"
+        "games|https://www.nintendolife.com/feeds/latest,"
+        "games|https://www.pushsquare.com/feeds/latest,"
         "movies|https://collider.com/feed/,"
-        "series|https://deadline.com/feed/"
+        "movies|https://variety.com/feed/,"
+        "movies|https://www.hollywoodreporter.com/feed/,"
+        "series|https://deadline.com/feed/,"
+        "series|https://www.whats-on-netflix.com/feed/"
     )
     rss_limit: int = 5
 
@@ -67,6 +74,19 @@ class Settings(BaseSettings):
     # Kitsu: animes anunciados, ordenados por audiencia (API publica, sem key).
     kitsu_enabled: bool = True
     kitsu_limit: int = 8
+
+    # AniList: animes anunciados, por popularidade (GraphQL publico, sem key).
+    anilist_enabled: bool = True
+    anilist_limit: int = 8
+
+    # Jikan (MyAnimeList): proxima temporada de animes (API publica, sem key).
+    jikan_enabled: bool = False
+    jikan_limit: int = 8
+
+    # TVmaze: estreias (1x01) de series em streaming nos proximos dias (sem key).
+    tvmaze_enabled: bool = True
+    tvmaze_limit: int = 8
+    tvmaze_days: int = 14
 
     http_timeout: float = 20.0
 
