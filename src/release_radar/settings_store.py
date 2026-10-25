@@ -38,6 +38,9 @@ EDITABLE_FIELDS: dict[str, str] = {
     "tvmaze_enabled": "bool",
     "tvmaze_limit": "int",
     "tvmaze_days": "int",
+    "wikidata_enabled": "bool",
+    "wikidata_limit": "int",
+    "wikidata_days": "int",
 }
 
 # Faixas defensivas: um ajuste absurdo gastaria LLM, disco e banda.
@@ -52,6 +55,8 @@ INT_LIMITS: dict[str, tuple[int, int]] = {
     "jikan_limit": (0, 25),
     "tvmaze_limit": (0, 50),
     "tvmaze_days": (1, 30),
+    "wikidata_limit": (0, 20),
+    "wikidata_days": (1, 730),
 }
 
 _TRUE = {"1", "true", "on", "yes", "sim"}

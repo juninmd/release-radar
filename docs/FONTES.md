@@ -2,8 +2,8 @@
 
 Hoje o radar coleta de **YouTube** (via yt-dlp), **Steam**, **Kitsu**, **AniList**,
 **TVmaze**, **Jikan** (desligada por padrão) e **RSS**, todas sem chave de API.
-Esta proposta lista o que ainda falta, por prioridade. Já implementadas: AniList, Jikan e
-TVmaze (a Jikan não foi verificada contra a API real, pois estava inacessível no ambiente de
+Esta proposta lista o que ainda falta, por prioridade. Já implementadas: AniList, Jikan,
+TVmaze e Wikidata (a Jikan não foi verificada contra a API real, pois estava inacessível no ambiente de
 desenvolvimento; ative com `JIKAN_ENABLED=true` e confira os logs). Todas devolvem
 `ReleaseCandidate` e passam pelo mesmo funil (dedupe → análise → *release gate*).
 
@@ -19,7 +19,7 @@ desenvolvimento; ative com `JIKAN_ENABLED=true` e confira os logs). Todas devolv
 | ~~TVmaze~~ ✅ | séries | REST público (`/schedule/web`, `/shows`) | Estreias de séries/streaming com data exata | baixo |
 | **YouTube via feed Atom** | todas | `youtube.com/feeds/videos.xml?channel_id=…` | Descoberta de vídeos **sem yt-dlp** (menos bloqueios); yt-dlp só para o que passar | médio |
 | **MangaDex** | mangá | REST público | Lançamentos e adaptações anunciadas | baixo |
-| **Wikipedia / Wikidata** | filmes, séries, jogos | SPARQL (`publication date` futura) | Calendário de estreias confirmado por fonte aberta | médio |
+| ~~Wikidata~~ ✅ (filmes e jogos) / **Wikipedia** | filmes, séries, jogos | SPARQL (`publication date` futura) | Calendário de estreias confirmado por fonte aberta | médio |
 
 ## Fase 2 — chave gratuita
 
@@ -36,6 +36,12 @@ desenvolvimento; ative com `JIKAN_ENABLED=true` e confira os logs). Todas devolv
 - **GOG / Nintendo eShop / Epic**: páginas "em breve" (APIs não oficiais; avaliar fragilidade).
 - **Feeds de estúdio**: A24, Studio Ghibli, Crunchyroll News, Nintendo Life, via `RSS_SOURCES`.
 - **Saídas novas**: feed RSS/Atom e `.ics` (calendário) do radar, webhook para Discord/Slack/Matrix e ntfy, além do Telegram.
+
+> **Wikidata:** a consulta SPARQL foi validada com `curl`, mas, no ambiente de desenvolvimento,
+> o Wikimedia respondeu 403 ("robot policy") ao `httpx` mesmo com o mesmo User-Agent que
+> funcionou no `curl`/`urllib`. Por isso a fonte vem desligada. Se o seu servidor receber 403,
+> siga a [política de robôs do Wikimedia](https://w.wiki/4wJS) (User-Agent com contato) e não
+> aumente a frequência de consultas.
 
 ## Como plugar (contrato)
 
@@ -55,6 +61,5 @@ def fetch_anilist(client: httpx.Client, limit: int) -> list[ReleaseCandidate]:
 
 ## Ordem sugerida
 
-1. **Wikidata** (filmes e jogos com data aberta, sem chave): o ponto mais fraco hoje é cinema.
-2. **YouTube via Atom** (robustez) e **saídas** (RSS/iCal/webhooks).
-3. Se aceitar chave grátis: **TMDB** (filmes) e **IGDB** (jogos).
+1. **YouTube via Atom** (robustez) e **saídas** (RSS/iCal/webhooks).
+2. Validar a Wikidata em produção (ver nota abaixo) e, se o Wikimedia aceitar o cliente, ligá-la por padrão.

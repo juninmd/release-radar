@@ -12,6 +12,7 @@ def base_settings(**overrides: object) -> Settings:
         "anilist_enabled": False,
         "jikan_enabled": False,
         "tvmaze_enabled": False,
+        "wikidata_enabled": False,
         "rss_sources": "",
     }
     defaults.update(overrides)
@@ -105,3 +106,19 @@ def test_failures_are_reported_per_source(monkeypatch) -> None:
 
     assert found == []
     assert errors == ["anilist"]
+
+
+def test_wikidata_registers_one_fetcher_per_kind(monkeypatch) -> None:
+    import release_radar.sources as sources
+
+    calls: list[tuple[str, int, int]] = []
+
+    def fake(client: object, kind: str, limit: int, days_ahead: int) -> list[ReleaseCandidate]:
+        calls.append((kind, limit, days_ahead))
+        return []
+
+    monkeypatch.setattr(sources, "fetch_wikidata", fake)
+
+    discover_extra_sources(base_settings(wikidata_enabled=True, wikidata_limit=4, wikidata_days=90))
+
+    assert sorted(calls) == [("games", 4, 90), ("movies", 4, 90)]
