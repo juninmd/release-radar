@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -182,15 +183,20 @@ def create_server(
     cache_ttl: float = 15.0,
     rate_burst: int = 60,
     rate_per_second: float = 2.0,
+    socket_timeout: float = 15.0,
+    write_rate_burst: int = 10,
+    write_rate_per_second: float = 10 / 60.0,
 ) -> ThreadingHTTPServer:
     base_settings = settings or get_settings()
     job = RunJob()
     db = Database(dsn)
     cache: TTLCache[list[dict]] = TTLCache(ttl=cache_ttl)
     limiter = RateLimiter(burst=rate_burst, per_second=rate_per_second)
+    write_limiter = RateLimiter(burst=write_rate_burst, per_second=write_rate_per_second)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ReleaseRadar"
+        timeout = socket_timeout
 
         def do_GET(self) -> None:
             self._dispatch("GET")
@@ -217,6 +223,12 @@ def create_server(
             path = urlsplit(self.path).path
             self.extra_headers: dict[str, str] = {}
             try:
+                if method in {"POST", "PUT"}:
+                    wait = write_limiter.acquire(self.client_address[0])
+                    if wait:
+                        self.extra_headers["Retry-After"] = str(max(1, math.ceil(wait)))
+                        raise ApiError(429, "Muitas requisicoes. Tente novamente em instantes.")
+
                 if path in ROUTES:
                     if method not in ROUTES[path]:
                         self._json(405, {"error": "Metodo nao permitido para esta rota."})
@@ -244,6 +256,10 @@ def create_server(
                 self._json(400, {"error": "Corpo JSON invalido."})
             except ValueError as err:
                 self._json(400, {"error": str(err) or "Corpo invalido."})
+            except TimeoutError:
+                self.close_connection = True
+                with contextlib.suppress(Exception):
+                    self._json(408, {"error": "Tempo limite excedido."})
             except Exception:
                 logger.exception("Failed to handle %s %s", method, path)
                 self._json(500, {"error": "Falha inesperada."})
@@ -291,11 +307,20 @@ def create_server(
                 raise ApiError(415, "Envie Content-Type: application/json.")
 
         def _read_json(self, optional: bool = False) -> dict[str, Any]:
+            if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+                raise ApiError(411, "Transfer-Encoding chunked nao suportado.")
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None:
+                if optional:
+                    return {}
+                raise ApiError(400, "Corpo JSON ausente.")
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                length = 0
-            if length <= 0:
+                length = int(raw_length)
+            except ValueError as err:
+                raise ApiError(400, "Content-Length invalido.") from err
+            if length < 0:
+                raise ApiError(400, "Content-Length invalido.")
+            if length == 0:
                 if optional:
                     return {}
                 raise ApiError(400, "Corpo JSON ausente.")
