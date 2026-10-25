@@ -126,6 +126,8 @@ class Settings(BaseSettings):
     release_radar_api_token: str = ""
     # Escotilha explicita: permite escrita anonima mesmo fora de localhost.
     release_radar_allow_anon: bool = False
+    # Hosts adicionais permitidos para o painel / rotas de escrita (separados por virgula).
+    release_radar_allowed_hosts: str = ""
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

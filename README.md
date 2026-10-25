@@ -160,6 +160,11 @@ Com `RELEASE_RADAR_API_TOKEN` definido, as rotas protegidas exigem
 (`RELEASE_RADAR_ALLOW_ANON=true` libera conscientemente). Tokens do Telegram, chaves da LLM e
 transcrições nunca saem pela API.
 
+Nas rotas de escrita e de gerência do painel (`/api/settings` e `/api/run`), requisições sem token
+validam os cabeçalhos `Host` e `Origin` para prevenir ataques de DNS rebinding. Por padrão,
+apenas `localhost` / `127.0.0.1` e o host de bind do servidor são permitidos; hosts adicionais
+podem ser informados em `RELEASE_RADAR_ALLOWED_HOSTS` (separados por vírgula).
+
 ## 🐳 Container
 
 A imagem roda sem privilégios (usuário `radar`) e executa uma rodada do bot por padrão.
