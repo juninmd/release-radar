@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import TypeVar
 
 import httpx
@@ -26,9 +29,27 @@ def is_transient(exc: BaseException) -> bool:
 def retry_after_seconds(exc: BaseException) -> float | None:
     if not isinstance(exc, httpx.HTTPStatusError):
         return None
+    header_val = exc.response.headers.get("Retry-After")
+    if header_val is None:
+        return None
+
+    header_val = header_val.strip()
     try:
-        return min(float(exc.response.headers["Retry-After"]), MAX_RETRY_AFTER)
-    except (KeyError, ValueError):
+        v = float(header_val)
+        if math.isfinite(v) and v >= 0:
+            return min(v, MAX_RETRY_AFTER)
+        return None
+    except ValueError:
+        pass
+
+    try:
+        dt = parsedate_to_datetime(header_val)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        diff = (dt - now).total_seconds()
+        return min(max(0.0, diff), MAX_RETRY_AFTER)
+    except Exception:
         return None
 
 
@@ -52,6 +73,7 @@ def with_retries(
             if delay is None:
                 delay = min(base_delay * 2 ** (attempt - 1), max_delay)
                 delay += random.uniform(0, delay / 4)
+            delay = max(0.0, delay)
             logger.warning(
                 "%s failed (%s); retry %s/%s in %.1fs",
                 label,

@@ -7,7 +7,9 @@ import re
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 
+import defusedxml.ElementTree as DefusedET
 import httpx
+from defusedxml.common import DefusedXmlException
 
 from ..models import ReleaseCandidate
 from ..net_guard import assert_public_url
@@ -17,12 +19,10 @@ logger = logging.getLogger(__name__)
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _IMG_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
-_DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
 _MAX_DESCRIPTION = 4000
 # xml.etree expande entidades internas: um feed hostil com DTD estoura a memoria
 # do job (billion laughs). Feed legitimo nao declara DOCTYPE, entao recusamos.
 _MAX_FEED_BYTES = 8 * 1024 * 1024
-_DOCTYPE_SCAN_BYTES = 4096
 _MAX_REDIRECTS = 5
 
 
@@ -31,7 +31,10 @@ def fetch_rss(
 ) -> list[ReleaseCandidate]:
     """Itens recentes de um feed RSS 2.0, RDF ou Atom (sem API key)."""
     body = with_retries(lambda: _read_body(client, feed_url), label=f"RSS {feed_url}")
-    root = ElementTree.fromstring(body)
+    try:
+        root = DefusedET.fromstring(body, forbid_dtd=True)
+    except DefusedXmlException as err:
+        raise ValueError(f"Feed {feed_url} declara DOCTYPE; recusado") from err
     feed_title = _first_text(root, ("channel/title", "title")) or feed_url
     entries = _find_all(root, ("item", "entry"))
     candidates: list[ReleaseCandidate] = []
@@ -71,10 +74,7 @@ def _drain(response: httpx.Response, feed_url: str) -> bytes:
         if size > _MAX_FEED_BYTES:
             raise ValueError(f"Feed {feed_url} acima de {_MAX_FEED_BYTES} bytes")
         chunks.append(chunk)
-    body = b"".join(chunks)
-    if _DOCTYPE_RE.search(body[:_DOCTYPE_SCAN_BYTES]):
-        raise ValueError(f"Feed {feed_url} declara DOCTYPE; recusado")
-    return body
+    return b"".join(chunks)
 
 
 def _local(tag: str) -> str:

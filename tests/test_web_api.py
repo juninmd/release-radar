@@ -58,6 +58,21 @@ def open_api(postgres_dsn: str) -> Iterator[str]:
         server.server_close()
 
 
+@pytest.fixture
+def anon_api(postgres_dsn: str) -> Iterator[tuple[str, int]]:
+    init_db(postgres_dsn)
+    settings = Settings(_env_file=None)
+    server = create_server(postgres_dsn, port=0, settings=settings, allow_anonymous_writes=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", server.server_port
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_health_and_releases_stay_open_when_a_token_is_configured(api) -> None:
     base, _ = api
     assert httpx.get(f"{base}/api/health", timeout=5).json()["status"] == "ok"
@@ -247,21 +262,6 @@ def test_run_limit_respects_the_same_bounds(api) -> None:
         assert response.status_code == 400, value
 
 
-@pytest.fixture
-def anon_api(postgres_dsn: str) -> Iterator[tuple[str, int]]:
-    init_db(postgres_dsn)
-    settings = Settings(_env_file=None)
-    server = create_server(postgres_dsn, port=0, settings=settings, allow_anonymous_writes=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}", server.server_port
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
-
-
 def test_put_settings_rejects_untrusted_host_without_token(anon_api) -> None:
     base, port = anon_api
     blocked = httpx.put(
@@ -346,3 +346,98 @@ def test_valid_token_bypasses_host_check(api) -> None:
         timeout=5,
     )
     assert response.status_code == 200
+
+
+def test_invalid_content_length_returns_400(api) -> None:
+    import socket
+    from urllib.parse import urlparse
+
+    base, headers = api
+    parsed = urlparse(base)
+    token = headers["Authorization"]
+
+    for cl in ("abc", "-5"):
+        s = socket.create_connection((parsed.hostname, parsed.port))
+        req = (
+            f"POST /api/run HTTP/1.1\r\n"
+            f"Host: {parsed.netloc}\r\n"
+            f"Authorization: {token}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {cl}\r\n\r\n"
+            "{}"
+        ).encode()
+        s.sendall(req)
+        s.settimeout(2.0)
+        response = b""
+        while True:
+            try:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            except (TimeoutError, OSError):
+                break
+        s.close()
+        assert b"HTTP/1.1 400 Bad Request" in response or b"HTTP/1.0 400 Bad Request" in response
+        assert b"Content-Length invalido." in response
+
+
+def test_chunked_transfer_encoding_returns_411(api) -> None:
+    import socket
+    from urllib.parse import urlparse
+
+    base, headers = api
+    parsed = urlparse(base)
+    token = headers["Authorization"]
+
+    s = socket.create_connection((parsed.hostname, parsed.port))
+    req = (
+        f"POST /api/run HTTP/1.1\r\n"
+        f"Host: {parsed.netloc}\r\n"
+        f"Authorization: {token}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Transfer-Encoding: chunked\r\n\r\n"
+        "2\r\n{}\r\n0\r\n\r\n"
+    ).encode()
+    s.sendall(req)
+    s.settimeout(2.0)
+    response = b""
+    while True:
+        try:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        except (TimeoutError, OSError):
+            break
+    s.close()
+    assert b"411" in response
+    assert b"Transfer-Encoding chunked nao suportado." in response
+
+
+def test_write_routes_rate_limiting(postgres_dsn: str) -> None:
+    init_db(postgres_dsn)
+    server = create_server(
+        postgres_dsn,
+        port=0,
+        settings=Settings(_env_file=None),
+        allow_anonymous_writes=True,
+        write_rate_burst=10,
+        write_rate_per_second=0.1,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/api/settings"
+        statuses = [
+            httpx.put(url, json={"steam_enabled": True}, timeout=5).status_code for _ in range(11)
+        ]
+        assert statuses[:10] == [200] * 10
+        assert statuses[10] == 429
+        limited = httpx.put(url, json={"steam_enabled": True}, timeout=5)
+        assert limited.status_code == 429
+        assert int(limited.headers["retry-after"]) >= 1
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()

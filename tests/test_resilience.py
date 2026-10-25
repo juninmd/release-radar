@@ -81,6 +81,66 @@ def test_retry_after_header_is_honored_and_capped() -> None:
     assert sleeps == [3.0, 10.0]
 
 
+@pytest.mark.parametrize("invalid_header", ["-1", "nan", "inf", "-inf", "abc"])
+def test_retry_after_invalid_or_negative_falls_back_to_backoff(invalid_header: str) -> None:
+    sleeps = []
+    attempts = iter([status_error(429, {"Retry-After": invalid_header})])
+
+    def limited() -> str:
+        try:
+            raise next(attempts)
+        except StopIteration:
+            return "ok"
+
+    assert with_retries(limited, attempts=2, base_delay=1.0, sleep=sleeps.append) == "ok"
+    assert len(sleeps) == 1
+    # Falls back to standard backoff (base_delay 1.0 + jitter)
+    assert 1.0 <= sleeps[0] <= 1.25
+
+
+def test_retry_after_zero_and_valid_seconds() -> None:
+    sleeps = []
+    attempts = iter(
+        [status_error(429, {"Retry-After": "0"}), status_error(429, {"Retry-After": "3"})]
+    )
+
+    def limited() -> str:
+        try:
+            raise next(attempts)
+        except StopIteration:
+            return "ok"
+
+    assert with_retries(limited, attempts=3, sleep=sleeps.append) == "ok"
+    assert sleeps == [0.0, 3.0]
+
+
+def test_retry_after_http_date() -> None:
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+
+    future_dt = datetime.now(UTC) + timedelta(seconds=5)
+    past_dt = datetime.now(UTC) - timedelta(seconds=10)
+
+    sleeps = []
+    attempts = iter(
+        [
+            status_error(429, {"Retry-After": format_datetime(future_dt)}),
+            status_error(429, {"Retry-After": format_datetime(past_dt)}),
+        ]
+    )
+
+    def limited() -> str:
+        try:
+            raise next(attempts)
+        except StopIteration:
+            return "ok"
+
+    assert with_retries(limited, attempts=3, sleep=sleeps.append) == "ok"
+    assert len(sleeps) == 2
+    assert 0.0 <= sleeps[0] <= 5.0
+    assert sleeps[1] == 0.0
+
+
 def test_get_json_retries_5xx_responses() -> None:
     responses = [httpx.Response(502), httpx.Response(200, json={"ok": True})]
 

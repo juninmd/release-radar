@@ -122,11 +122,17 @@ Exemplo do contrato da API (fictício): [`docs/previews/api-example.json`](docs/
 | RSS / Atom | por feed | `RSS_SOURCES`, `RSS_LIMIT` | RSS 2.0, RDF e Atom |
 
 Listas usam `categoria|endereço` separados por vírgula; categorias: `movies`, `series`,
-`games`, `anime`. Todas as variáveis estão em [`.env.example`](.env.example).
+`games`, `anime`. As variáveis principais estão em [`.env.example`](.env.example); a lista completa está em `config.py`.
 
 Nenhuma fonte exige chave de API. As fontes rodam em paralelo e uma que falha não derruba as
 outras (o erro é contado por fonte na rodada). **Em breve:** saídas `.ics`/webhook e
 mais — veja a [proposta de novas fontes](docs/FONTES.md).
+
+### Anti-bloqueio do YouTube
+
+Para mitigar bloqueios ou restrições de IP na extração de vídeos via YouTube (yt-dlp), você pode configurar:
+- `YOUTUBE_PLAYER_CLIENT`: clientes alternativos do YouTube separados por vírgula (ex.: `tv,mweb,web_safari`).
+- `YOUTUBE_COOKIES_FILE`: caminho local para um arquivo de cookies em formato Netscape/cookies.txt (nunca versione arquivos de cookies).
 
 ## 🖼️ Telas
 
@@ -150,7 +156,7 @@ Detalhes em [desktop/README.md](desktop/README.md).
 
 | Rota | Acesso | Descrição |
 |---|---|---|
-| `GET /api/releases` | aberta | 120 links mais recentes publicados |
+| `GET /api/releases` | aberta | 120 links mais recentes publicados (cache de 15 s; campos detalhados em [`docs/previews/api-example.json`](docs/previews/api-example.json)) |
 | `GET /api/health` | aberta | Saúde do serviço |
 | `POST`/`GET /api/run` | token | Dispara e acompanha uma rodada |
 | `GET`/`PUT /api/settings` | token | Fontes e limites editáveis |
