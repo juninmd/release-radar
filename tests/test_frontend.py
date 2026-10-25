@@ -254,3 +254,48 @@ def test_sort_by_nearest_premiere_puts_dated_upcoming_first_and_resets(page, app
     assert titles.all_inner_texts() == ["Próxima", "Distante", "Lançada"]
     page.get_by_role("button", name="Limpar filtros").click()
     assert titles.all_inner_texts() == ["Distante", "Lançada", "Próxima"]
+
+
+def test_search_debounce_and_reset_focus(page, app_url: str) -> None:
+    load(page, app_url)
+    search_box = page.get_by_role("searchbox")
+    search_box.focus()
+    search_box.type("Orion", delay=20)  # Total ~100ms (< 200ms)
+    # Immediately after typing, before 200ms debounce completes, all 4 cards still visible
+    expect(page.locator(".card")).to_have_count(4)
+    # After 250ms, debounced search filters to 1 card
+    page.wait_for_timeout(250)
+    expect(page.locator(".card")).to_have_count(1)
+
+    # Click reset filters button
+    page.get_by_role("button", name="Limpar filtros").click()
+    expect(page.locator("#result-count")).to_be_focused()
+    expect(page.locator(".card")).to_have_count(4)
+
+
+def test_details_open_state_preserved_when_filters_change(page, app_url: str) -> None:
+    load(page, app_url)
+    first_details = page.locator(".card-details").first
+    first_details.locator("summary").click()
+    expect(first_details).to_have_attribute("open", "")
+
+    # Change category filter to 'movies' which retains the first card (Fronteira de Órion)
+    page.get_by_label("Categoria").select_option("movies")
+    expect(page.locator(".card")).to_have_count(1)
+    expect(page.locator(".card-details").first).to_have_attribute("open", "")
+
+
+def test_accessibility_live_regions_and_axe_audit(page, app_url: str) -> None:
+    load(page, app_url)
+    # Check live region attributes
+    expect(page.locator("#cards")).not_to_have_attribute("aria-live", "")
+    expect(page.locator("#result-count")).to_have_attribute("aria-live", "polite")
+    expect(page.locator("#result-count")).to_have_attribute("aria-atomic", "true")
+
+    # Run axe-core audit using page.evaluate with script source
+    axe_path = Path("frontend/node_modules/axe-core/axe.min.js")
+    if axe_path.exists():
+        axe_script = axe_path.read_text("utf-8")
+        results = page.evaluate(f"() => {{ {axe_script}; return axe.run(); }}")
+        violations = results.get("violations", [])
+        assert len(violations) == 0, f"Axe accessibility violations found: {violations}"

@@ -263,6 +263,11 @@ export function createApp(doc, options = {}) {
     let isLoading = false;
     let hasLoaded = false;
     let loadError = false;
+    let searchDebounceTimer = null;
+    const cardCache = new Map();
+    function getItemKey(item, index) {
+        return item.id || item.url || `item-${index}`;
+    }
     function loadState() {
         return { hasLoaded, isLoading, loadError };
     }
@@ -277,7 +282,16 @@ export function createApp(doc, options = {}) {
     function render() {
         const visible = filterItems(items, currentFilters());
         const ordered = sortSelect.value === "soon" ? sortByNearestPremiere(visible) : visible;
-        cards.replaceChildren(...ordered.map((item) => makeCard(item, doc)));
+        const orderedCards = ordered.map((item, index) => {
+            const key = getItemKey(item, index);
+            let card = cardCache.get(key);
+            if (!card) {
+                card = makeCard(item, doc);
+                cardCache.set(key, card);
+            }
+            return card;
+        });
+        cards.replaceChildren(...orderedCards);
         count.textContent = countLabel(visible.length, items.length, loadState());
         refresh.disabled = isLoading;
         refresh.textContent = isLoading ? "Atualizando…" : "Atualizar";
@@ -312,6 +326,7 @@ export function createApp(doc, options = {}) {
             if (!isReleasesResponse(data))
                 throw new Error("Resposta inválida");
             items = data.items;
+            cardCache.clear();
             hasLoaded = true;
             updatedAt.textContent = `Atualizado às ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(now())}`;
         }
@@ -325,12 +340,18 @@ export function createApp(doc, options = {}) {
         }
     }
     function resetFilters() {
+        if (searchDebounceTimer !== null) {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = null;
+        }
         selectedKind = "all";
         categorySelect.value = "all";
         availabilitySelect.value = "all";
         sortSelect.value = "recent";
         search.value = "";
         render();
+        count.tabIndex = -1;
+        count.focus();
     }
     for (const tab of tabs) {
         tab.addEventListener("click", () => {
@@ -338,7 +359,15 @@ export function createApp(doc, options = {}) {
             render();
         });
     }
-    search.addEventListener("input", render);
+    search.addEventListener("input", () => {
+        if (searchDebounceTimer !== null) {
+            clearTimeout(searchDebounceTimer);
+        }
+        searchDebounceTimer = setTimeout(() => {
+            searchDebounceTimer = null;
+            render();
+        }, 200);
+    });
     categorySelect.addEventListener("change", render);
     availabilitySelect.addEventListener("change", render);
     sortSelect.addEventListener("change", render);

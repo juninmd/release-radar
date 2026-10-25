@@ -358,6 +358,12 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
   let isLoading = false;
   let hasLoaded = false;
   let loadError = false;
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const cardCache = new Map<string, HTMLElement>();
+
+  function getItemKey(item: ReleaseItem, index: number): string {
+    return item.id || item.url || `item-${index}`;
+  }
 
   function loadState(): LoadState {
     return { hasLoaded, isLoading, loadError };
@@ -375,7 +381,16 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
   function render(): void {
     const visible = filterItems(items, currentFilters());
     const ordered = sortSelect.value === "soon" ? sortByNearestPremiere(visible) : visible;
-    cards.replaceChildren(...ordered.map((item) => makeCard(item, doc)));
+    const orderedCards = ordered.map((item, index) => {
+      const key = getItemKey(item, index);
+      let card = cardCache.get(key);
+      if (!card) {
+        card = makeCard(item, doc);
+        cardCache.set(key, card);
+      }
+      return card;
+    });
+    cards.replaceChildren(...orderedCards);
     count.textContent = countLabel(visible.length, items.length, loadState());
     refresh.disabled = isLoading;
     refresh.textContent = isLoading ? "Atualizando…" : "Atualizar";
@@ -407,6 +422,7 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
       const data: unknown = await response.json();
       if (!isReleasesResponse(data)) throw new Error("Resposta inválida");
       items = data.items;
+      cardCache.clear();
       hasLoaded = true;
       updatedAt.textContent = `Atualizado às ${new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(now())}`;
     } catch {
@@ -419,12 +435,18 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
   }
 
   function resetFilters(): void {
+    if (searchDebounceTimer !== null) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
     selectedKind = "all";
     categorySelect.value = "all";
     availabilitySelect.value = "all";
     sortSelect.value = "recent";
     search.value = "";
     render();
+    count.tabIndex = -1;
+    count.focus();
   }
 
   for (const tab of tabs) {
@@ -433,7 +455,15 @@ export function createApp(doc: Document, options: AppOptions = {}): AppControlle
       render();
     });
   }
-  search.addEventListener("input", render);
+  search.addEventListener("input", () => {
+    if (searchDebounceTimer !== null) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null;
+      render();
+    }, 200);
+  });
   categorySelect.addEventListener("change", render);
   availabilitySelect.addEventListener("change", render);
   sortSelect.addEventListener("change", render);
