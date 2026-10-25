@@ -101,6 +101,36 @@ def test_feed_with_doctype_is_refused() -> None:
             raise AssertionError("feed com DOCTYPE deveria ser recusado")
 
 
+def test_feed_with_large_comment_before_doctype_is_refused() -> None:
+    body = (
+        b'<?xml version="1.0"?><!-- '
+        + b"a" * 5000
+        + b' --><!DOCTYPE r [<!ENTITY a "x">]><r>&a;</r>'
+    )
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+    with httpx.Client(transport=transport) as client:
+        try:
+            fetch_rss(client, "https://feed", category="games", limit=5)
+        except ValueError as error:
+            assert "declara DOCTYPE; recusado" in str(error)
+        else:  # pragma: no cover - falha explicita
+            raise AssertionError("feed com comentario longo antes de DOCTYPE deveria ser recusado")
+
+
+def test_utf16_feed_with_doctype_is_refused() -> None:
+    body = '<?xml version="1.0" encoding="utf-16"?><!DOCTYPE r [<!ENTITY a "x">]><r>&a;</r>'.encode(
+        "utf-16"
+    )
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+    with httpx.Client(transport=transport) as client:
+        try:
+            fetch_rss(client, "https://feed", category="games", limit=5)
+        except ValueError as error:
+            assert "declara DOCTYPE; recusado" in str(error)
+        else:  # pragma: no cover - falha explicita
+            raise AssertionError("feed UTF-16 com DOCTYPE deveria ser recusado")
+
+
 def test_oversized_feed_is_refused() -> None:
     huge = "<rss><channel><title>x</title></channel></rss>" + " " * (9 * 1024 * 1024)
     with client_for(huge) as client:
