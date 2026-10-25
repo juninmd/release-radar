@@ -161,6 +161,47 @@ def test_api_responses_are_cached_between_requests(
         server.server_close()
 
 
+def test_slowloris_socket_timeout_closes_connection(postgres_dsn: str) -> None:
+    import socket
+    import time
+
+    init_db(postgres_dsn)
+    socket_timeout = 0.2
+    server = create_server(
+        postgres_dsn, port=0, allow_anonymous_writes=True, socket_timeout=socket_timeout
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        start_time = time.monotonic()
+        s = socket.create_connection(("127.0.0.1", server.server_port))
+        s.sendall(
+            b"PUT /api/settings HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: 60000\r\n\r\n{"
+        )
+        s.settimeout(2.0)
+        response = b""
+        try:
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+        except (TimeoutError, OSError):
+            pass
+        s.close()
+        elapsed = time.monotonic() - start_time
+        assert elapsed < socket_timeout + 1.0
+        assert b"408" in response
+        assert b"Tempo limite excedido" in response
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_list_releases_keeps_reading_until_hidden_clips_are_replaced(
     postgres_dsn: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
