@@ -77,3 +77,34 @@ def test_youtube_candidate_still_transcribes(monkeypatch) -> None:
     settings = Settings(_env_file=None, analyze_video_content=True)
 
     assert maybe_transcribe(settings, candidate("youtube", 1, "20260907")) == "falado"
+
+
+def test_transcription_passes_yt_dlp_opts_and_removes_wav(monkeypatch, tmp_path) -> None:
+    from release_radar.config import Settings
+    from release_radar.pipeline import maybe_transcribe
+
+    seen: dict[str, object] = {}
+
+    def fake_download(cand, output_dir, extra_opts=None):
+        wav = output_dir / "abc.wav"
+        wav.write_bytes(b"RIFF")
+        seen["opts"] = extra_opts
+        return wav
+
+    def failing_transcribe(path, *args, **kwargs):
+        seen["path"] = path
+        raise RuntimeError("whisper fora")
+
+    monkeypatch.setattr("release_radar.pipeline.download_audio", fake_download)
+    monkeypatch.setattr("release_radar.pipeline.transcribe_audio", failing_transcribe)
+    settings = Settings(
+        _env_file=None,
+        analyze_video_content=True,
+        audio_dir=tmp_path,
+        youtube_cookies_file="/tmp/fake-cookies.txt",
+    )
+
+    assert maybe_transcribe(settings, candidate("youtube", 1, "20260907")) == ""
+    assert seen["opts"] == settings.yt_dlp_opts
+    assert settings.yt_dlp_opts  # cookies configurados: a opcao existe de fato
+    assert not (tmp_path / "abc.wav").exists()

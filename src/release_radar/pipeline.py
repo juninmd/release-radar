@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import psycopg2
 
@@ -255,8 +256,9 @@ def maybe_transcribe(
         return ""
     if breaker and breaker.is_open:
         return ""
+    audio_path: Path | None = None
     try:
-        audio_path = download_audio(candidate, settings.audio_dir)
+        audio_path = Path(download_audio(candidate, settings.audio_dir, settings.yt_dlp_opts))
         transcript = transcribe_audio(
             audio_path, settings.whisper_base_url, settings.whisper_timeout
         )
@@ -270,6 +272,9 @@ def maybe_transcribe(
             candidate.external_id,
         )
         return ""
+    finally:
+        if audio_path is not None:
+            audio_path.unlink(missing_ok=True)
     if breaker:
         breaker.record_success()
     if stats:
