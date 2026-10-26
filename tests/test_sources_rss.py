@@ -180,3 +180,23 @@ def test_entry_without_http_link_is_dropped() -> None:
         urls = [item.url for item in fetch_rss(client, "https://feed", category="movies", limit=10)]
 
     assert urls == ["https://wp.test/post/", "https://wp.test/post-2/"]
+
+
+ATOM_ENCLOSURE_FIRST = """<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Feed</title>
+  <entry>
+    <title>Novo Jogo</title>
+    <link rel="enclosure" href="https://cdn.example.test/video.mp4"/>
+    <link rel="alternate" href="https://example.test/post/1"/>
+    <id>urn:uuid:1</id>
+  </entry>
+</feed>
+"""
+
+
+def test_atom_prefers_alternate_link_over_enclosure() -> None:
+    with client_for(ATOM_ENCLOSURE_FIRST) as client:
+        candidates = fetch_rss(client, "https://example.test/feed", category="games", limit=10)
+
+    assert [item.url for item in candidates] == ["https://example.test/post/1"]

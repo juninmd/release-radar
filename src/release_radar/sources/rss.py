@@ -109,11 +109,16 @@ def _link(entry: ElementTree.Element) -> str:
     text = _child_text(entry, "link")
     if text:
         return text
+    # Atom: so o link "alternate" (ou sem rel, que o padrao define como alternate)
+    # e o artigo; enclosure/self/replies apontam para midia ou para o proprio feed.
     for child in entry:
-        if _local(child.tag) == "link":
-            href = child.attrib.get("href")
-            if href:
-                return href
+        href = child.attrib.get("href")
+        if (
+            _local(child.tag) == "link"
+            and href
+            and child.attrib.get("rel", "alternate") == "alternate"
+        ):
+            return href
     return _child_text(entry, "guid")
 
 
