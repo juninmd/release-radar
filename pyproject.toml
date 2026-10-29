@@ -55,7 +55,7 @@ ignore_missing_imports = true
 "scripts/*" = ["E501"]
 
 [dependency-groups]
-browser = ["playwright==1.64.0"]
+browser = ["playwright==1.64.1"]
 dev = [
     "mypy>=1.13",
     "pytest>=8.0",
