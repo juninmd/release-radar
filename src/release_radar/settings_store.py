@@ -126,6 +126,8 @@ def read_overrides(conn: psycopg2.extensions.connection) -> dict[str, Any]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT key, value FROM radar_settings")
         rows = cur.fetchall()
+    # Fecha a transacao do SELECT antes de discover() baixar feeds/yt-dlp.
+    conn.commit()
     return {row["key"]: row["value"] for row in rows if row["key"] in EDITABLE_FIELDS}
 
 

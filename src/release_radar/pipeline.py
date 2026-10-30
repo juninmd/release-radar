@@ -11,6 +11,7 @@ import psycopg2
 from .analyzer import analyze_release
 from .config import Settings
 from .db import (
+    ensure_connection,
     get_connection,
     get_item,
     init_db,
@@ -100,6 +101,10 @@ async def run_pipeline(
         for candidate in candidates:
             if stats.analyzed >= max_items:
                 break
+            # O item anterior pode ter passado minutos em LLM/yt-dlp; se o
+            # Postgres derrubou a sessao (idle-in-transaction), reconecta antes
+            # de tocar no banco de novo.
+            conn = ensure_connection(conn, target)
             if llm_breaker.is_open:
                 stats.aborted = "llm_unavailable"
                 logger.error("LLM unavailable; stopping the run to avoid burning candidates")
@@ -187,7 +192,18 @@ async def run_pipeline(
                 stats.failed += 1
                 logger.exception("Failed processing %s", enriched.external_id)
                 if not dry_run:
-                    mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
+                    try:
+                        mark_failed(
+                            conn, enriched.external_id, str(exc), {"title": enriched.title}
+                        )
+                    except psycopg2.Error:
+                        # O erro original pode ter derrubado a conexao. Registrar
+                        # a falha nao pode derrubar o run inteiro.
+                        logger.exception(
+                            "Could not persist failure for %s; reconnecting",
+                            enriched.external_id,
+                        )
+                        conn = ensure_connection(conn, target)
     finally:
         conn.close()
         stats.duration_seconds = round(time.monotonic() - started, 2)

@@ -39,7 +39,10 @@ def work_already_posted(conn: psycopg2.extensions.connection, keys: Iterable[str
             "SELECT 1 FROM release_items WHERE status = 'posted' AND work_key = ANY(%s) LIMIT 1",
             (wanted,),
         )
-        return cur.fetchone() is not None
+        posted = cur.fetchone() is not None
+    # Leitura nao deve deixar transacao aberta entre chamadas externas.
+    conn.commit()
+    return posted
 
 
 def row_work_key(row: Mapping[str, Any]) -> str:
