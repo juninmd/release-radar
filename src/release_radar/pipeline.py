@@ -193,9 +193,7 @@ async def run_pipeline(
                 logger.exception("Failed processing %s", enriched.external_id)
                 if not dry_run:
                     try:
-                        mark_failed(
-                            conn, enriched.external_id, str(exc), {"title": enriched.title}
-                        )
+                        mark_failed(conn, enriched.external_id, str(exc), {"title": enriched.title})
                     except psycopg2.Error:
                         # O erro original pode ter derrubado a conexao. Registrar
                         # a falha nao pode derrubar o run inteiro.

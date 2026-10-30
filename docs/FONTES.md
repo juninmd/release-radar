@@ -47,8 +47,9 @@ desenvolvimento; ative com `JIKAN_ENABLED=true` e confira os logs). Todas devolv
 
 ```python
 # src/release_radar/sources/anilist.py
-def fetch_anilist(client: httpx.Client, limit: int) -> list[ReleaseCandidate]:
-    ...  # external_id="anilist:<id>", source="anilist", category="anime"
+def fetch_anilist(
+    client: httpx.Client, limit: int
+) -> list[ReleaseCandidate]: ...  # external_id="anilist:<id>", source="anilist", category="anime"
 ```
 
 1. Criar o módulo em `sources/` e registrá-lo em `_build_fetchers` (`sources/__init__.py`).
