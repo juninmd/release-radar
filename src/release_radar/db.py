@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import asdict
 from typing import Any
@@ -18,6 +19,26 @@ def get_connection(dsn: str) -> psycopg2.extensions.connection:
     return conn
 
 
+def ensure_connection(
+    conn: psycopg2.extensions.connection, dsn: str
+) -> psycopg2.extensions.connection:
+    """Garante uma conexao viva, reconectando se o Postgres derrubou a sessao.
+
+    O pipeline fica minutos em chamadas externas (LLM/yt-dlp) entre um comando
+    SQL e outro. Postgres com ``idle_in_transaction_session_timeout`` encerra a
+    sessao nesse intervalo; sem reconectar, o item seguinte falha em cascata.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        conn.commit()
+        return conn
+    except psycopg2.Error:
+        with contextlib.suppress(psycopg2.Error):
+            conn.close()
+        return get_connection(dsn)
+
+
 def init_db(dsn: str) -> None:
     conn = get_connection(dsn)
     try:
@@ -31,7 +52,10 @@ def get_item(conn: psycopg2.extensions.connection, external_id: str) -> dict[str
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT * FROM release_items WHERE external_id = %s", (external_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+    # O SELECT abre transacao. Fechar aqui evita idle-in-transaction enquanto o
+    # chamador baixa/transcreve/analisa o proximo item.
+    conn.commit()
+    return dict(row) if row else None
 
 
 def reserve_candidate(
