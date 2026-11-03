@@ -16,7 +16,7 @@ from psycopg2.extras import RealDictCursor
 
 from .config import Settings, get_settings
 from .db import get_connection
-from .dedupe import row_work_key
+from .dedupe import row_work_keys
 from .jobs import RunJob
 from .links import link_kind
 from .release_policy import release_state
@@ -95,7 +95,7 @@ def fetch_batch(db: Database, cursor: tuple[object, int] | None) -> list[dict]:
     with db.connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             f"""SELECT id, external_id, source, title, url, channel, category, thumbnail,
-                       analysis, analysis_summary, posted_at, work_key
+                       analysis, analysis_summary, posted_at, work_key, work_keys
                 FROM release_items WHERE status = 'posted' AND posted_at IS NOT NULL {after}
                 ORDER BY posted_at DESC, id DESC LIMIT %s""",
             (*(cursor or ()), BATCH_SIZE),
@@ -107,7 +107,7 @@ def to_item(row: dict, seen_works: set[str]) -> dict | None:
     analysis = row["analysis"] if isinstance(row["analysis"], dict) else {}
     kind = link_kind(row["url"], row["source"])
     content_type = video_content_type(kind, row["title"], analysis)
-    if content_type == "clip" or (kind == "video" and not_new_work(row, seen_works)):
+    if content_type == "clip" or not_new_work(row, seen_works):
         return None
     return {
         "id": row["external_id"],
@@ -154,13 +154,14 @@ def video_content_type(kind: str, title: str, analysis: dict) -> str:
 
 
 def not_new_work(row: dict, seen_works: set[str]) -> bool:
-    """True quando outro trailer mais recente da mesma obra ja entrou na lista."""
-    key = row_work_key(row)
-    if not key:
+    """True quando outra publicacao mais recente da mesma obra ja entrou na lista."""
+    keys = row_work_keys(row)
+    if not keys:
         return False
-    if key in seen_works:
+    if seen_works.intersection(keys):
+        seen_works.update(keys)
         return True
-    seen_works.add(key)
+    seen_works.update(keys)
     return False
 
 

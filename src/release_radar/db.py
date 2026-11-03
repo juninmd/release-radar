@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -62,15 +63,15 @@ def reserve_candidate(
     conn: psycopg2.extensions.connection,
     candidate: ReleaseCandidate,
     content_hash: str,
-    work_key: str | None = None,
+    work_keys: Sequence[str] = (),
 ) -> bool:
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO release_items
                 (external_id, source, content_hash, title, url, channel, category, duration,
-                 upload_date, thumbnail, description, work_key)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 upload_date, thumbnail, description, work_key, work_keys)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
             """,
             (
@@ -85,7 +86,8 @@ def reserve_candidate(
                 candidate.upload_date,
                 candidate.thumbnail,
                 candidate.description,
-                work_key,
+                work_keys[0] if work_keys else None,
+                list(work_keys),
             ),
         )
         inserted = cur.rowcount == 1
@@ -98,13 +100,15 @@ def save_analysis(
     candidate: ReleaseCandidate,
     transcript: str,
     analysis: ReleaseAnalysis,
-    work_key: str | None = None,
+    work_keys: Sequence[str] = (),
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE release_items
             SET work_key = COALESCE(%s, work_key),
+                work_keys = (SELECT COALESCE(array_agg(DISTINCT key), '{}')
+                             FROM unnest(work_keys || %s::text[]) AS key),
                 transcript = %s,
                 analysis = %s,
                 analysis_summary = %s,
@@ -114,7 +118,8 @@ def save_analysis(
             WHERE external_id = %s
             """,
             (
-                work_key,
+                work_keys[0] if work_keys else None,
+                list(work_keys),
                 transcript,
                 Json(analysis_to_json(analysis)),
                 analysis.summary,

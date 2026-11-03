@@ -171,7 +171,7 @@ def test_dashboard_hides_clips_and_older_duplicates_already_in_the_database(
 def test_legacy_clip_never_blocks_the_real_trailer_and_unknown_category_falls_back(
     postgres_dsn: str,
 ) -> None:
-    from release_radar.dedupe import row_work_key
+    from release_radar.dedupe import row_work_keys
 
     legacy_clip = {
         "work_key": None,
@@ -182,14 +182,14 @@ def test_legacy_clip_never_blocks_the_real_trailer_and_unknown_category_falls_ba
         "category": "movies",
         "analysis": {"original_title": "Dune: Part Three"},
     }
-    assert row_work_key(legacy_clip) == ""
+    assert row_work_keys(legacy_clip) == []
 
     unknown_category = {
         **legacy_clip,
         "title": "Dune: Part Three | Official Trailer",
         "analysis": {"original_title": "Dune: Part Three", "category": "unknown"},
     }
-    assert row_work_key(unknown_category) == "movies:dune part three"
+    assert row_work_keys(unknown_category)[0] == "movies:dune part three"
 
 
 def test_posted_at_is_exposed_with_an_explicit_offset() -> None:
@@ -239,3 +239,100 @@ def test_source_errors_are_counted_per_source(monkeypatch) -> None:
     p.discover(Settings(_env_file=None, youtube_sources="movies|@Canal"), stats)
 
     assert stats.source_errors == {"steam": 2, "rss:https://feed.test": 1, "@Canal": 1}
+
+
+def catalog(source: str, item_id: str, title: str, category: str = "movies") -> ReleaseCandidate:
+    return ReleaseCandidate(
+        external_id=f"{source}:{item_id}",
+        title=title,
+        url=f"https://{source}.example/{item_id}",
+        channel=source,
+        category=category,
+        duration=0,
+        upload_date="20260901",
+        thumbnail=None,
+        description="Release date: 2027-06-01",
+        source=source,
+    )
+
+
+def test_work_posted_by_a_catalog_is_not_reposted_by_another_source(radar) -> None:
+    run, publisher = radar
+
+    first = run(catalog("tvmaze", "1", "Dune: Part Three"))
+    second = run(
+        catalog("anilist", "2", "Dune Part Three"),
+        video("h1", "Dune: Part Three | Official Trailer"),
+    )
+
+    assert first.posted == 1
+    assert (second.posted, second.skipped_duplicate) == (0, 2)
+    assert publisher.published == ["Dune: Part Three"]
+
+
+def test_article_headline_is_not_a_work_identity_but_the_analysis_is(radar) -> None:
+    run, publisher = radar
+    run(video("i1", "Dune: Part Three | Official Trailer"))
+    article = ReleaseCandidate(
+        external_id="rss:1",
+        title="Everything we know about the new sandworm movie",
+        url="https://news.example/dune-3",
+        channel="News",
+        category="movies",
+        duration=0,
+        upload_date="20260901",
+        thumbnail=None,
+        source="rss",
+    )
+
+    stats = run(article)
+
+    assert (stats.posted, stats.skipped_duplicate) == (0, 1)
+    assert publisher.published == ["Dune: Part Three | Official Trailer"]
+
+
+def test_any_alias_of_the_posted_work_blocks_a_later_item(radar) -> None:
+    run, publisher = radar
+    run(video("j1", "Dune: Part Three | Official Trailer"))
+
+    def renamed(candidate, **_kwargs):
+        # A LLM trocou o titulo original; so o titulo PT-BR coincide com o gravado.
+        return analysis_from_json(
+            candidate,
+            {
+                "is_release_signal": True,
+                "release_status": "upcoming",
+                "title": "Duna: Parte Tres",
+                "original_title": "Arrakis Chronicles 3",
+                "content_type": "trailer",
+            },
+        )
+
+    run(video("j2", "Duna: Parte Tres | Trailer Oficial"), analyze_with=renamed)
+    stats = run(video("j3", "Arrakis Chronicles 3 trailer"), analyze_with=renamed)
+
+    assert (stats.posted, stats.skipped_duplicate) == (0, 1)
+    assert len(publisher.published) == 1
+
+
+def test_backfill_gives_legacy_catalog_rows_their_keys(postgres_dsn: str) -> None:
+    from release_radar.dedupe import work_already_posted
+
+    init_db(postgres_dsn)
+    conn = get_connection(postgres_dsn)
+    try:
+        legacy = catalog("steam", "9", "Hollow Knight: Silksong", "games")
+        assert reserve_candidate(conn, legacy, "hash-legacy")
+        mark_posted(conn, legacy.external_id)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE release_items SET work_key = '', work_keys = '{}'")
+        conn.commit()
+        assert not work_already_posted(conn, ["games:hollow knight silksong"])
+    finally:
+        conn.close()
+    init_db(postgres_dsn)
+    conn = get_connection(postgres_dsn)
+    try:
+        assert work_already_posted(conn, ["games:hollow knight silksong"])
+    finally:
+        conn.close()
