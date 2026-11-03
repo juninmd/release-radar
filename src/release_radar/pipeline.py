@@ -21,7 +21,7 @@ from .db import (
     reserve_candidate,
     save_analysis,
 )
-from .dedupe import analysis_keys, candidate_keys, work_already_posted
+from .dedupe import analysis_keys, candidate_keys, merge_keys, work_already_posted
 from .fingerprint import content_hash
 from .links import link_kind
 from .logging_setup import configure_logging
@@ -120,9 +120,7 @@ async def run_pipeline(
             )
             fingerprint = content_hash(enriched.title, enriched.channel, enriched.description)
             keys = candidate_keys(enriched)
-            if not dry_run and not reserve_candidate(
-                conn, enriched, fingerprint, keys[0] if keys else None
-            ):
+            if not dry_run and not reserve_candidate(conn, enriched, fingerprint, keys):
                 stats.skipped_existing += 1
                 continue
             if not dry_run:
@@ -157,9 +155,7 @@ async def run_pipeline(
                 llm_breaker.record_success()
                 work_keys = analysis_keys(enriched, analysis)
                 if not dry_run:
-                    save_analysis(
-                        conn, enriched, transcript, analysis, work_keys[0] if work_keys else None
-                    )
+                    save_analysis(conn, enriched, transcript, analysis, merge_keys(work_keys, keys))
                 stats.analyzed += 1
                 if already_released(analysis):
                     if not dry_run:
