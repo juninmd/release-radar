@@ -4,6 +4,10 @@
 
 # 📡 Release Radar
 
+<p align="center">
+  <img src="docs/readme/hero.png" alt="Banner ilustrativo do Release Radar (mockup com dados fictícios)" width="100%">
+</p>
+
 **Descubra o que vem por aí: filmes, séries, jogos e animes — antes de todo mundo.**
 
 O bot varre trailers, notícias e páginas oficiais, uma LLM separa o que realmente
@@ -338,6 +342,24 @@ docs/                capturas e proposta de fontes
 O fluxo de uma rodada é `discover → reserve → enrich → gate barato → transcrição → LLM →
 release gate → Telegram/banco`. `run_sync` é a porta de entrada usada pela CLI, pela API e
 pelo job do painel.
+
+## Imagens
+
+> [!NOTE]
+> **Mockups ilustrativos.** As telas abaixo foram geradas em HTML com dados fictícios (Playwright) e não são capturas de uma instalação real.
+
+<p align="center">
+  <img src="docs/readme/upcoming.png" alt="Próximos lançamentos — mockup ilustrativo com dados fictícios" width="100%">
+  <br>
+  <sub>Próximos lançamentos — dados fictícios.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/readme/alert.png" alt="Alerta no Telegram — mockup ilustrativo com dados fictícios" width="100%">
+  <br>
+  <sub>Alerta no Telegram — dados fictícios.</sub>
+</p>
+
 
 ## Limitações
 
