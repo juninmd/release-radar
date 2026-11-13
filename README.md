@@ -4,9 +4,6 @@
 
 # 📡 Release Radar
 
-<p align="center">
-  <img src="docs/readme/hero.png" alt="Banner ilustrativo do Release Radar (mockup com dados fictícios)" width="100%">
-</p>
 
 **Descubra o que vem por aí: filmes, séries, jogos e animes — antes de todo mundo.**
 
