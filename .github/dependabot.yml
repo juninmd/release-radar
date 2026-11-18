@@ -9,6 +9,8 @@ updates:
     dependencies:
       patterns:
       - '*'
+  cooldown:
+    default-days: 7
 - package-ecosystem: github-actions
   directory: /
   schedule:
@@ -17,6 +19,8 @@ updates:
     github-actions:
       patterns:
       - '*'
+  cooldown:
+    default-days: 7
 - package-ecosystem: npm
   directory: /frontend
   schedule:
@@ -25,6 +29,8 @@ updates:
     npm:
       patterns:
       - '*'
+  cooldown:
+    default-days: 7
 - package-ecosystem: npm
   directory: /desktop
   schedule:
@@ -33,6 +39,8 @@ updates:
     npm:
       patterns:
       - '*'
+  cooldown:
+    default-days: 7
 - package-ecosystem: cargo
   directory: /desktop/src-tauri
   schedule:
@@ -41,3 +49,5 @@ updates:
     cargo:
       patterns:
       - '*'
+  cooldown:
+    default-days: 7
