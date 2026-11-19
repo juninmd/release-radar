@@ -136,7 +136,8 @@ def _thumbnail(entry: ElementTree.Element, description_html: str) -> str | None:
         if _local(child.tag) not in ("thumbnail", "content", "enclosure"):
             continue
         url = child.attrib.get("url")
-        media_type = child.attrib.get("type", "image")
+        # media:content often omits `type` and only says medium="video"/"audio"
+        media_type = child.attrib.get("type") or child.attrib.get("medium") or "image"
         if _is_http_url(url) and media_type.startswith("image"):
             return url
     match = _IMG_RE.search(description_html)

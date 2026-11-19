@@ -200,3 +200,30 @@ def test_atom_prefers_alternate_link_over_enclosure() -> None:
         candidates = fetch_rss(client, "https://example.test/feed", category="games", limit=10)
 
     assert [item.url for item in candidates] == ["https://example.test/post/1"]
+
+
+MEDIUM_ONLY = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Feed</title>
+    <item>
+      <title>Video sem type</title>
+      <link>https://wp.test/video/</link>
+      <media:content url="https://wp.test/clip.mp4" medium="video"/>
+    </item>
+    <item>
+      <title>Imagem com medium</title>
+      <link>https://wp.test/image/</link>
+      <media:content url="https://wp.test/pic.jpg" medium="image"/>
+    </item>
+  </channel>
+</rss>
+"""
+
+
+def test_media_content_medium_video_is_not_used_as_thumbnail() -> None:
+    # Sem `type`, o valor padrao "image" aceitava o .mp4 e o send_photo falhava no Telegram.
+    with client_for(MEDIUM_ONLY) as client:
+        candidates = fetch_rss(client, "https://feed", category="movies", limit=10)
+
+    assert [item.thumbnail for item in candidates] == [None, "https://wp.test/pic.jpg"]
