@@ -69,7 +69,8 @@ class TTLCache(Generic[T]):
 
     - Dentro do `ttl`, requests repetidos nao tocam o banco.
     - Se varios requests chegam com o cache vencido, so um recarrega; os outros esperam.
-    - Se a recarga falha, serve o valor anterior ate `stale_ttl` (melhor dado velho que 503).
+    - Se a recarga falha, serve o valor anterior ate `stale_ttl` (melhor dado velho que 503)
+      e so tenta de novo depois de outro `ttl`, para nao travar cada request no timeout.
     """
 
     def __init__(
@@ -83,6 +84,7 @@ class TTLCache(Generic[T]):
         self._clock = clock
         self._lock = threading.Lock()
         self._entries: dict[object, tuple[float, T]] = {}
+        self._failed_at: dict[object, float] = {}
 
     def get_or_load(self, key: object, loader: Callable[[], T]) -> T:
         with self._lock:
@@ -90,13 +92,19 @@ class TTLCache(Generic[T]):
             entry = self._entries.get(key)
             if entry and now - entry[0] < self._ttl:
                 return entry[1]
+            stale_ok = entry is not None and now - entry[0] < self._stale_ttl
+            failed_at = self._failed_at.get(key)
+            if entry and stale_ok and failed_at is not None and now - failed_at < self._ttl:
+                return entry[1]
             try:
                 value = loader()
             except Exception:
-                if entry and now - entry[0] < self._stale_ttl:
+                if entry and stale_ok:
+                    self._failed_at[key] = now
                     logger.warning("Reload failed; serving stale cache", exc_info=True)
                     return entry[1]
                 raise
+            self._failed_at.pop(key, None)
             self._entries[key] = (self._clock(), value)
             return value
 
