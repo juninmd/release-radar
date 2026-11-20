@@ -205,6 +205,29 @@ def test_ttl_cache_serves_stale_value_when_reload_fails_until_stale_limit() -> N
         cache.get_or_load("k", fail)
 
 
+def test_ttl_cache_does_not_retry_failed_reload_on_every_request() -> None:
+    # Banco fora: cada recarga trava o request no connect_timeout, e o lock serializa todos.
+    now = [0.0]
+    cache: TTLCache[str] = TTLCache(ttl=10, stale_ttl=100, clock=lambda: now[0])
+    cache.get_or_load("k", lambda: "bom")
+    attempts = []
+
+    def fail() -> str:
+        attempts.append(now[0])
+        raise RuntimeError("banco fora")
+
+    now[0] = 50
+    assert [cache.get_or_load("k", fail) for _ in range(5)] == ["bom"] * 5
+    assert attempts == [50]  # os demais servem o valor velho sem esperar outra falha
+    now[0] = 61
+    assert cache.get_or_load("k", fail) == "bom"
+    assert attempts == [50, 61]  # depois de um ttl tenta de novo
+    now[0] = 62
+    assert cache.get_or_load("k", lambda: "novo") == "bom"  # ainda no recuo da falha
+    now[0] = 72
+    assert cache.get_or_load("k", lambda: "novo") == "novo"
+
+
 def test_rate_limiter_blocks_after_burst_and_refills() -> None:
     now = [0.0]
     limiter = RateLimiter(burst=2, per_second=1, clock=lambda: now[0])
