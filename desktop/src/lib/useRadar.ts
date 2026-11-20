@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { EMPTY_FILTERS, filterReleases, type Filters } from "./filters";
+import { followRun } from "./followRun";
 import { detectNew, mergeSeen } from "./newItems";
 import { applySkin } from "./theme";
 import type { AppConfig, Release, RunSnapshot } from "./types";
@@ -116,34 +117,24 @@ export function useRadar(): Radar {
       if (runBusyRef.current) return;
       runBusyRef.current = true;
       try {
-        const started = await api.startRun(dryRun);
-        setRun(started);
-        let last = started;
-        // Acompanha por no máximo ~30 min e desiste, em vez de poll infinito.
-        for (let attempt = 0; attempt < 900; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 2000));
-          last = await api.runStatus();
-          setRun(last);
-          if (!last.running) break;
-        }
-        if (last.running) {
+        let started: RunSnapshot;
+        try {
+          started = await api.startRun(dryRun);
+        } catch (err) {
           setRun({
-            ...last,
             running: false,
-            error: "A rodada continua no servidor; atualize em alguns minutos.",
+            dry_run: dryRun,
+            limit: null,
+            started_at: null,
+            finished_at: null,
+            stats: null,
+            error: err instanceof Error ? err.message : "Falha ao iniciar a rodada.",
           });
+          return;
         }
+        setRun(started);
+        await followRun(started, { status: () => api.runStatus(), onUpdate: setRun });
         await refresh();
-      } catch (err) {
-        setRun({
-          running: false,
-          dry_run: dryRun,
-          limit: null,
-          started_at: null,
-          finished_at: null,
-          stats: null,
-          error: err instanceof Error ? err.message : "Falha ao iniciar a rodada.",
-        });
       } finally {
         runBusyRef.current = false;
       }
