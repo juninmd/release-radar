@@ -63,6 +63,9 @@ def analyze_release(
     except json.JSONDecodeError:
         logger.warning("LLM returned invalid JSON for %s", candidate.external_id)
         return fallback_analysis(candidate, transcript, raw_text)
+    if not isinstance(data, dict):
+        logger.warning("LLM returned non-object JSON for %s", candidate.external_id)
+        return fallback_analysis(candidate, transcript, raw_text)
     return analysis_from_json(candidate, data)
 
 
@@ -143,21 +146,38 @@ def analysis_from_json(candidate: ReleaseCandidate, data: dict[str, Any]) -> Rel
         title=str(data.get("title") or candidate.title),
         original_title=str(data.get("original_title") or candidate.title),
         release_window=str(data.get("release_window") or "desconhecido"),
-        platforms=[str(item) for item in data.get("platforms", []) if item],
-        genres=[str(item) for item in data.get("genres", []) if item],
+        platforms=_string_list(data.get("platforms")),
+        genres=_string_list(data.get("genres")),
         synopsis=str(data.get("synopsis") or ""),
         trailer_reading=str(data.get("trailer_reading") or ""),
         transcript_summary=str(data.get("transcript_summary") or ""),
         why_it_matters=str(data.get("why_it_matters") or ""),
         audience=str(data.get("audience") or ""),
-        confidence=float(data.get("confidence") or 0.0),
-        tags=[str(item) for item in data.get("tags", []) if item],
+        confidence=_confidence(data.get("confidence")),
+        tags=_string_list(data.get("tags")),
         hype=hype_from_json(data.get("hype")),
         raw=data,
         release_date=source_release_date(candidate) or str(data.get("release_date") or ""),
         release_status=release_status_from_json(data.get("release_status")),
         content_type=content_type,
     )
+
+
+def _string_list(value: Any) -> list[str]:
+    """LLM às vezes manda "PS5" em vez de ["PS5"]; iterar a string viraria uma lista de letras."""
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item]
+
+
+def _confidence(value: Any) -> float:
+    """Valor fora do schema ("high", None) vira 0, sem derrubar a análise inteira."""
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 _CONTENT_TYPES = {"trailer", "teaser", "announcement", "clip", "other", "unknown"}
