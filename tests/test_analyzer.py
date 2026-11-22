@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from release_radar.analyzer import analysis_from_json, fallback_analysis
 from release_radar.models import ReleaseCandidate
 
@@ -27,6 +29,22 @@ def test_non_boolean_signal_does_not_authorize_publication() -> None:
         make_candidate(), {"is_release_signal": "false", "release_status": "upcoming"}
     )
     assert not analysis.is_release_signal
+
+
+def test_off_schema_fields_do_not_break_the_analysis() -> None:
+    analysis = analysis_from_json(
+        make_candidate(),
+        {"platforms": "PS5", "genres": None, "tags": 3, "confidence": "high"},
+    )
+    assert analysis.platforms == ["PS5"]
+    assert analysis.genres == []
+    assert analysis.tags == []
+    assert analysis.confidence == 0.0
+
+
+def test_confidence_is_clamped_to_unit_range() -> None:
+    assert analysis_from_json(make_candidate(), {"confidence": 85}).confidence == 1.0
+    assert analysis_from_json(make_candidate(), {"confidence": "0.4"}).confidence == 0.4
 
 
 def test_fallback_identifies_release_words() -> None:
@@ -114,3 +132,18 @@ def test_unknown_content_type_from_llm_is_normalised() -> None:
 
     assert analysis_from_json(video, {"content_type": " Teaser "}).content_type == "teaser"
     assert analysis_from_json(video, {"content_type": "banana"}).content_type == "unknown"
+
+
+def test_non_object_json_falls_back_instead_of_raising(monkeypatch) -> None:
+    import release_radar.analyzer as analyzer
+
+    message = SimpleNamespace(content='["not", "an", "object"]')
+    response = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    class FakeClient:
+        def __init__(self, **_: object) -> None:
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **_: response))
+
+    monkeypatch.setattr(analyzer, "OpenAI", FakeClient)
+    analysis = analyzer.analyze_release(make_candidate(), "", "http://llm", "key", "m", 1.0)
+    assert analysis.title == "Big Game - Launch Trailer"
